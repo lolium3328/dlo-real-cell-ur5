@@ -1,0 +1,146 @@
+{
+  "xml": "/home/anilam/Codes/dlo/dlo-value-wm-r10fix/outputs/cell_calibrated_20261113/v41_ur5/scene.xml",
+  "mjb": "/home/anilam/Codes/dlo/dlo-value-wm-r10fix/outputs/cell_calibrated_20261113/v41_ur5/scene.mjb",
+  "initial_rest_fraction": 0.75,
+  "left_ik_error_m": 7.650747811096e-07,
+  "right_ik_error_m": 4.970397291499205e-06,
+  "rope_mass_kg": 0.1,
+  "endpoint_error_m": [
+    1.2760585525346683e-05,
+    3.208712120017167e-05
+  ],
+  "initial_shape_rmse_m": 0.0033085103171977964,
+  "max_speed_m_s": 2.3149454471425636e-05,
+  "xml_sha256": "656c13ea57c0a4ab6a021ba9186194a1bd8a13b20bb1f26edbeebd87cf743370",
+  "sphere_offset": [
+    0.0,
+    0.0,
+    -0.025
+  ],
+  "sphere_radius": 0.04,
+  "config": {
+    "protocol": "calibrated_cell_deploy_v1",
+    "config": {
+      "profile": "outputs/real_rope_refine_20261113/profile.json",
+      "workspace": "outputs/visibility_reference_20261113/recommended_workspace.json",
+      "out": "outputs/cell_calibrated_20261113/v41_ur5",
+      "sphere_radius": 0.04,
+      "sphere_offset": [
+        0.0,
+        0.0,
+        -0.025
+      ],
+      "right_quat": [
+        -0.109382,
+        0.640856,
+        -0.640856,
+        -0.408218
+      ],
+      "dt": 0.008,
+      "decision_steps": 10,
+      "speed": 0.05,
+      "acceleration": 0.15,
+      "clearance": 0.005,
+      "cbf_margin": 0.005,
+      "horizon": 32,
+      "plan_horizon": 15,
+      "plan_commit": [],
+      "image_hz": 30.0,
+      "image_latency_s": 0.048,
+      "margin_px": 20.0,
+      "max_time_s": 30.0,
+      "crossing_node_max": 20,
+      "arm_clearance": 0.02,
+      "max_oracle_plans": 30,
+      "right_rope_clearance": 0.005,
+      "causal_oracle": true,
+      "headless": true,
+      "headless_model": "occlusion",
+      "occlusion_error_scale": 1.0,
+      "occlusion_quality": true,
+      "gate_mode": "age",
+      "headless_pause": true,
+      "ball_speed_scale": 0.2285714285714286,
+      "hold_s": 0.4,
+      "seed": 20261113,
+      "rounds": 60,
+      "wm_pretrain": 6000,
+      "bc_pretrain": 2000,
+      "train_steps": 200,
+      "collect": 60,
+      "batch": 32,
+      "starts": 512,
+      "deploy_fraction": 0.75,
+      "cont_scale": 0.003,
+      "grad_truncate": 0,
+      "state_grad_clip": 0.001
+    },
+    "inputs": {
+      "outputs/real_rope_refine_20261113/profile.json": "34e78766f5c88cd7fc9711155615cc82960386222ebe773e0e99e176fee9dab2",
+      "outputs/visibility_reference_20261113/recommended_workspace.json": "f3176c556d8acc9cab1cd1db27a4468f4175308da0eca63e7f2085e1ccce3cca",
+      "outputs/tcp_camera_recalibration_20261113/candidate_extrinsics.json": "2826283078fd962ec1a9c542c1f66ce5c12706e1472c5c9838799a8d6e8a30c8"
+    },
+    "base_transform": [
+      [
+        0.9999439483143366,
+        0.009387264134953313,
+        0.004896886929065748,
+        0.4002537395814177
+      ],
+      [
+        -0.00937688500994682,
+        0.99995374998131,
+        -0.0021382062170568427,
+        -0.7375284228653249
+      ],
+      [
+        -0.004916732354488277,
+        0.00209216882135357,
+        0.9999857241843898,
+        0.14456221911014072
+      ],
+      [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    ],
+    "source_sha256": {
+      "dlovw/cell/calibrated/__init__.py": "28b1a60a21937c0e2a783dcf74fc51cb77fa595fb85dc6db1a69d6fbf562d3d7",
+      "dlovw/cell/calibrated/actuator_solver.py": "37b8a146ee44e63437d6e5f2f735422234d2af84015539a20db3a12d32639341",
+      "dlovw/cell/calibrated/checkpoint.py": "b54e3d3f527cdcdbdee4ee7af22176885591ef5bea75c3bd954e78106f5dc45c",
+      "dlovw/cell/calibrated/config.py": "da6090a05def44dcb7627611ead9cdb0331c90c697d0bbca56bb0faa88e2543d",
+      "dlovw/cell/calibrated/constraints.py": "6757a3bbbd0fc5cbcb09feb1c0a0f28cbb4d5e617de5e090df8e1203541ad78b",
+      "dlovw/cell/calibrated/data.py": "776cf4ce8ce322935d48524667a3d722797ceb1971c7078c2770acc92c93adda",
+      "dlovw/cell/calibrated/deployment.py": "4af789904d99881c64e19f46269d0e5f33b5c2b8201c60d60aa04d1fe53995a8",
+      "dlovw/cell/calibrated/evaluation.py": "eaa2b62083770d2c7496456cee505af5e2986f73fe4eeccd4d69a308963cf68e",
+      "dlovw/cell/calibrated/forecaster.py": "c76f627ebb7ce4a70cbee78dd8b193cec01d3f829d1ca95a905156dc112c3eae",
+      "dlovw/cell/calibrated/headless.py": "4193186549359f80e48b81cb368e83a3477375f69f5088bb75202c0f2dab33ff",
+      "dlovw/cell/calibrated/headless_occlusion.py": "e8ec1b729e5cd720b58d1d26bc940210351d7d43c53034437e619f4be1269e53",
+      "dlovw/cell/calibrated/kernels.py": "5085e350642da793495a3239ae2ff0bd1ccbd668f19557780087892a9e0c2501",
+      "dlovw/cell/calibrated/model.py": "83657b52bf8ecc4a588f357cf6fcddf0900fc5df0275d023b8c308c11f59c6bd",
+      "dlovw/cell/calibrated/observations.py": "0166adfb04160bcd63cfac7993e2af78dcfa724595f7fc52acca8b7d4379eb8e",
+      "dlovw/cell/calibrated/package.py": "727992d2e456cdca4d7d2fc4a0ec6dba961a74d813450807b694bf55835df1d1",
+      "dlovw/cell/calibrated/physics.py": "489a1b563d6ad5b3bc0ec34fe733264ba7b76b270ee36c041cc4a21ccfcc623d",
+      "dlovw/cell/calibrated/render.py": "af4ac7eb7ceefbf46aa8607f9a137556df051c5af79333691239c69002403843",
+      "dlovw/cell/calibrated/report.py": "beef9754642e5efadf38fe559ff9a4058d672eb8fbc4c3e91590a419897ca3de",
+      "dlovw/cell/calibrated/runtime_cli.py": "f99bf08733178b4c15211b2dfe557fe46e86d68e0fe5ddbdc4a41018fe7742bc",
+      "dlovw/cell/calibrated/session.py": "1c66b345510fa5905ca9d49e7acbc93e9188d7c93e1318b4c8c10c60b3b1a05d",
+      "dlovw/cell/calibrated/tasks.py": "f68d390062aa89929bbd631c22ba2f6a38b78eb1c7e19a19ad4855f0d666863c",
+      "dlovw/cell/calibrated/training.py": "8b59f53c388e91ab48e0ef756df01e174d456683d543db07265ddb17be2d4b5d",
+      "dlovw/cell/cbf.py": "b826a415bf9ce15976a78b04b845db938d947e523fde5d696060e096ab8e748b",
+      "dlovw/cell/cost.py": "4aaf4d22f6101862284c633f4d256cec5d85858f982b5f82163e95f018dab933",
+      "dlovw/cell/planner.py": "eace1f105f2ab3042fd2d0c7546208d781d026976145ad28e53fbfb6d60b9717",
+      "dlovw/imagination/r10.py": "2c314be80cc0f8be78094841d89ba1b005cadcbd1aea4a1a0614bb4b5ffd17dd",
+      "dlovw/imagination/r10_exec.py": "22bc77427484c54df85f3d36bfc6078965e98e78b100cb521e1af4ec38971ea0",
+      "dlovw/imagination/feasible.py": "b4f6854944ef20c0966fe49432748c6f99658377e9433f1037d845e6247727f2",
+      "dlovw/imagination/world_model.py": "4d0a3ad537f41734cfcd564cb9fb64cd3076764cdfa956cb107acca0fa1ac738",
+      "dlovw/imagination/episodes.py": "0145304ecebbb7bf6642de34c1967b34df6b3fbca80a3b7f25a1595e710cd2bf",
+      "dlovw/imagination/obstacle_model.py": "1a5056c9e271cd3d2e08d794c315c3c05f7f735e76582ac4989da836480d2676",
+      "dlovw/imagination/rgb_rope.py": "7a7cc9c411ca9a27d1ef979b18ec3462762b3d06c7e7976f9e1897a75b9e0937",
+      "dlovw/real_rope/tracking.py": "5f008dacaca3538c06ab44e38f86cdfa15681bb71745661f15e7398536270ce5"
+    },
+    "code_commit": "0a855998b86cca03fea7d09352f42ab886a63219"
+  }
+}

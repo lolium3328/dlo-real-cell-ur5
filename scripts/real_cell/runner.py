@@ -1,0 +1,287 @@
+"""Scene execution for the real cell: two loops so a slow planning step never stalls the robots.
+
+* Servo loop (caller's thread, 125 Hz): all robot I/O. Reads both arms, publishes a timestamped snapshot, runs the
+  guards (faults, follow error, online two-arm / ball-left-arm capsule clearance, timeout) and streams servoL (left:
+  the current commanded target) and servoJ (right: the planned joints at the ball clock).
+* Control thread: newest snapshot (+ camera frames for the sync Controller) -> Controller.step with the COMMANDED left
+  position (as in simulation) -> left target += command, projected onto the workspace domain if it is up to
+  --snap-m outside. Status aborts, success and the ball-rope clearance live here. With AsyncController the tracker
+  and the planner run in their own threads (async_controller.py).
+
+The ball clock starts when the Controller first reports 'tracking' (as in simulation, where the tracker sees 0.64 s
+of the stationary setup and then policy and ball start together at t = 0).
+"""
+import json
+import sys
+import threading
+import time
+import traceback
+from collections import deque
+
+import numpy as np
+
+import errors as E
+import geometry as G
+from planning import right_q_at, sphere_at
+from robots import NoCameras, PERIOD, T_RIGHT, Rp_to_pose, pose_to_Rp, tool_rotation_error
+from dlovw.cell.calibrated.constraints import bounds_at
+
+ABORT_STATUS = ('invalid_input', 'invalid_clock', 'outside_workspace', 'observation_fault', 'robot_stale',
+                'invalid_robot_clock')
+
+
+class Shared:
+    def __init__(self, left_target):
+        self.lock = threading.Lock()
+        self.terminal = 'running'
+        self.snap = None                         # (robot time, ql, left tcp, right tcp, qr), newest
+        self.left_target = left_target
+        self.t0_run = None                       # ball clock start
+        self.refused = 0                         # control steps refused by the workspace-domain check
+        self.snapped = 0                         # commanded targets projected back onto the domain
+        self.detail, self.exc = {}, None         # measured values / exception of the first ending (error report)
+
+    def finish(self, why, exc=None, **detail):
+        with self.lock:
+            if self.terminal == 'running':
+                self.terminal, self.detail, self.exc = why, detail, exc
+
+    @property
+    def running(self):
+        return self.terminal == 'running'
+
+
+def snap_to_domain(p, slices):
+    """Nearest-ish point of the workspace domain (z clipped, then x/y clipped at that z) and the distance moved.
+    Many scene starts / targets lie exactly on a slab plane, where a 0.1 mm robot error would otherwise read as
+    'outside_workspace'."""
+    p = np.asarray(p, float)
+    z = float(np.clip(p[2], slices[0]['z_m'], slices[-1]['z_m']))
+    lo, hi = bounds_at(z, slices)
+    q = np.r_[np.clip(p[:2], lo, hi), z]
+    return q, float(np.linalg.norm(q-p))
+
+
+def surface_distance(curve, sphere, sphere_r, rope_r):
+    return float(np.linalg.norm(np.asarray(curve)-sphere, axis=1).min()-sphere_r-rope_r)
+
+
+def ball_centre(pr, cfg):
+    """World ball centre from the right arm's actual TCP pose (right-base frame)."""
+    R, p = pose_to_Rp(pr)
+    Rw, pw = T_RIGHT[:3, :3] @ R, T_RIGHT[:3, :3] @ p+T_RIGHT[:3, 3]
+    return pw+Rw @ np.asarray(cfg.sphere_offset, float)
+
+
+def servo_loop(sh, plan, left, right, kin, cfg, args, T0, log):
+    Rl, hist = plan['Rl'], deque()
+    nxt = time.monotonic()
+    while sh.running:
+        nxt += PERIOD
+        wait = nxt-time.monotonic()
+        if wait > 0:
+            time.sleep(wait)
+        else:
+            nxt = time.monotonic()               # late: do not burst to catch up
+        t = time.monotonic()-T0
+        bad = [n for n, arm in (('left', left), ('right', right)) if arm.faulted()]
+        if bad:
+            sh.finish('robot_fault', faulted_arms=bad)
+            break
+        ql, pl, qr, pr = left.q(), left.tcp(), right.q(), right.tcp()
+        with sh.lock:
+            sh.snap = (t, ql, pl, pr, qr)
+            target, t0 = sh.left_target.copy(), sh.t0_run
+        s = 0. if t0 is None else t-t0
+        q_cmd = right_q_at(plan, s)
+        # follow error against the commands of the last --follow-window s (unknown servo tracking delay)
+        hist.append((t, target, q_cmd))
+        while hist[0][0] < t-args.follow_window:
+            hist.popleft()
+        lag_l = min(float(np.linalg.norm(pl[:3]-h[1])) for h in hist)
+        lag_r = min(float(np.abs(qr-h[2]).max()) for h in hist)
+        row = dict(t=round(t, 4), s=round(s, 4), left=pl[:3].tolist(), left_cmd=target.tolist(), qr=qr.tolist(),
+                   qr_cmd=q_cmd.tolist(), lag_l=round(lag_l, 5), lag_r=round(lag_r, 5))
+        if lag_r > args.max_follow_rad:
+            sh.finish('right_lag_abort', 右臂关节偏差_rad=round(lag_r, 4), 阈值_rad=args.max_follow_rad,
+                      joint=int(np.argmax(np.abs(qr-q_cmd))), qr=np.round(qr, 4).tolist(), qr_cmd=np.round(q_cmd, 4).tolist())
+        if lag_l > args.max_follow_m:
+            sh.finish('left_lag_abort', 左臂位置偏差_mm=round(lag_l*1e3, 1), 阈值_mm=args.max_follow_m*1e3,
+                      left=np.round(pl[:3], 4).tolist(), left_cmd=np.round(target, 4).tolist())
+        if not args.no_capsule:                  # actual joints of both arms, every servo step
+            PL = kin.points('left', ql)
+            gap_arm = G.pair_gap(PL, kin.points('right', qr))
+            gap_ball = float(G.ball_arm_gap(ball_centre(pr, cfg)[None], PL[None]).min())
+            row.update(gap_arm=round(gap_arm, 4), gap_ball=round(gap_ball, 4))
+            if min(gap_arm, gap_ball) < args.abort_gap_m:
+                sh.finish('abort_arm_clearance', 两臂间隙_mm=round(gap_arm*1e3, 1), 球与左臂间隙_mm=round(gap_ball*1e3, 1),
+                          阈值_mm=args.abort_gap_m*1e3)
+        if s >= cfg.max_time_s:
+            sh.finish('timeout', 时限_s=cfg.max_time_s)
+        if t0 is None and t > args.max_start_s:
+            sh.finish('abort_never_tracking', 等待_s=round(t, 2))
+        log.append(row)
+        if not sh.running:
+            break
+        left.servo_l(Rp_to_pose(Rl, target), args.lookahead, args.gain)
+        right.servo_j(q_cmd, args.lookahead, args.gain)
+
+
+def control_loop(sh, ctl, cams, rec, cfg, plan, args, T0, log):
+    goal, target_left = np.asarray(rec['goal_curve'], float), np.asarray(rec['target_left'], float)
+    seen, stale_since, ok_since = {}, None, None
+    threaded = hasattr(ctl, 'start')             # AsyncController: own tracker / planner threads read the cameras
+    nxt = time.monotonic()
+    try:
+        if threaded:
+            ctl.start(cams, T0)
+        while sh.running:
+            nxt += PERIOD
+            wait = nxt-time.monotonic()
+            if wait > 0:
+                time.sleep(wait)
+            else:
+                nxt = time.monotonic()
+            with sh.lock:
+                snap, t0, cmd = sh.snap, sh.t0_run, sh.left_target.copy()
+            if snap is None:
+                continue
+            rt, _, pl, pr, _ = snap
+            t = time.monotonic()-T0
+            frames = {} if threaded else cams.latest()
+            imgs = {r: f for r, (f, ft) in frames.items() if ft > seen.get(r, -np.inf)}
+            vt = {r: frames[r][1]-T0 for r in imgs}
+            seen.update({r: frames[r][1] for r in imgs})
+            Rrb, prb = pose_to_Rp(pr)
+            # The controller gets the COMMANDED left position, as in simulation (where the arm is exactly where it was
+            # commanded): its acceleration / braking limits, CBF and velocity estimate integrate its own commands.
+            # The actual arm trails it by the servo delay; the follow-error guard (servo loop) bounds the difference.
+            res = ctl.step(t, cmd, prb, Rrb, imgs, vt, right_frame='right_base', right_timestamp=rt, left_timestamp=rt)
+            d_in = float(np.linalg.norm(pl[:3]-cmd))
+            status, u = res['status'], np.asarray(res['command_xyz'], float)
+            if not np.isfinite(u).all() or np.linalg.norm(u) > cfg.cap*1.001:
+                sh.finish('abort_bad_command', command=u.tolist(), 上限_m=cfg.cap)
+                break
+            if res.get('stop_required') or status in ABORT_STATUS:
+                sh.finish(f'abort_{status}', status=status, fault=res.get('fault'), left_cmd=np.round(cmd, 4).tolist(),
+                          机器人数据年龄_s=round(t-rt, 3))
+                break
+            t_now = time.monotonic()-T0
+            if status == 'observation_stale':
+                stale_since = t_now if stale_since is None else stale_since
+                if t_now-stale_since > args.max_stale_s:
+                    sh.finish('abort_stale_too_long', 失效时长_s=round(t_now-stale_since, 2), 限制_s=args.max_stale_s,
+                              跟踪数据年龄_s=res.get('quality_age'))
+                    break
+            else:
+                stale_since = None
+            with sh.lock:
+                if t0 is None and status == 'tracking':
+                    sh.t0_run = t0 = t           # ball clock starts with the first policy step
+                new, d_cmd = snap_to_domain(sh.left_target+u, cfg.slices)
+                refused = d_cmd > args.snap_m
+                if refused:
+                    sh.refused += 1              # far outside: hold the commanded target
+                else:
+                    sh.left_target = new         # slightly outside (target ahead of the lagging arm): slide along
+                    sh.snapped += d_cmd > 1e-9
+            s = 0. if t0 is None else t-t0
+            row = dict(t=round(t, 4), rt=round(rt, 4), s=round(s, 4), status=status, u=u.tolist(), refused=refused,
+                       actual_vs_cmd_mm=round(d_in*1e3, 3), snap_cmd_mm=round(d_cmd*1e3, 3),
+                       decision=bool(res.get('decision')), ms=res.get('elapsed_ms'),
+                       decision_ms=res.get('decision_ms', res.get('elapsed_ms') if res.get('decision') else None),
+                       quality_age=res.get('quality_age'))
+            q = res.get('quality')
+            if q is not None and t0 is not None and status in ('tracking', 'observation_stale'):
+                curve = np.asarray(q['centerline'], float)
+                e = np.linalg.norm(curve-goal, axis=1)
+                rmse, p95 = float(np.sqrt((e*e).mean())), float(np.percentile(e, 95))
+                end = float(np.linalg.norm(pl[:3]-target_left))
+                sphere = res.get('sphere_position')
+                sphere = sphere_at(plan, s) if sphere is None else np.asarray(sphere, float)
+                near = surface_distance(curve, sphere, cfg.sphere_radius, cfg.material['radius_m'])
+                row.update(rmse=rmse, p95=p95, end=end, surface=near)
+                ok = rmse <= .012 and p95 <= .025 and end <= .016 and s >= rec['event_end_s']+.2
+                ok_since = (t if ok_since is None else ok_since) if ok else None
+                if near < args.abort_surface_m:
+                    sh.finish('abort_surface_clearance', 球绳估计间隙_mm=round(near*1e3, 1), 阈值_mm=args.abort_surface_m*1e3,
+                              ball=np.round(sphere, 4).tolist())
+                elif ok_since is not None and t-ok_since >= cfg.hold_s:
+                    sh.finish('success', rmse_mm=round(rmse*1e3, 1), p95_mm=round(p95*1e3, 1), end_mm=round(end*1e3, 1))
+            log.append(row)
+    except Exception as e:                       # noqa: BLE001 - any controller error stops the scene
+        traceback.print_exc()
+        sh.finish(f'controller_error: {e!r}', exc=e)
+    finally:
+        if threaded:
+            ctl.stop()
+
+
+def run_scene(rec, cfg, plan, left, right, cams, kin, args, factory, out_dir):
+    """Run one scene; every ending other than success writes an error report (errors.py). Returns the terminal."""
+    Rl, sid = plan['Rl'], rec['id']
+
+    def early(terminal, **detail):
+        E.report(out_dir, sid, terminal, detail=detail, left=left, right=right)
+        return terminal
+
+    rot = tool_rotation_error(left.tcp(), Rl)
+    if rot > .03:
+        return early('orientation_changed', 姿态变化_rad=round(rot, 3))
+    ctl = factory(rec)
+    if not isinstance(cams, NoCameras):          # the tracker initialises from the first frames of both views
+        t_wait = time.monotonic()
+        while len(cams.latest()) < 2:
+            if time.monotonic()-t_wait > 10:
+                return early('camera_timeout', 已收到的相机=sorted(cams.latest()))
+            time.sleep(.05)
+    start, d0 = snap_to_domain(left.tcp()[:3], cfg.slices)
+    if d0 > args.snap_m:
+        return early('outside_workspace_at_start', 超出工作区_mm=round(d0*1e3, 2), left=np.round(left.tcp()[:3], 4).tolist())
+    sh = Shared(start)
+    servo_log, control_log = [], []
+    old_switch = sys.getswitchinterval()
+    sys.setswitchinterval(5e-4)                  # keep the servo loop on time while the planner holds the GIL
+    T0 = time.monotonic()
+    worker = threading.Thread(target=control_loop, args=(sh, ctl, cams, rec, cfg, plan, args, T0, control_log),
+                              daemon=True)
+    worker.start()
+    try:
+        servo_loop(sh, plan, left, right, kin, cfg, args, T0, servo_log)
+    except KeyboardInterrupt:
+        sh.finish('user_interrupt')
+    except Exception as e:                       # noqa: BLE001
+        traceback.print_exc()
+        sh.finish(f'servo_error: {e!r}', exc=e)
+    finally:
+        sh.finish('stopped')
+        left.stop()
+        right.stop()
+        worker.join(2.)
+        sys.setswitchinterval(old_switch)
+        out_dir.mkdir(parents=True, exist_ok=True)
+        (out_dir/f'{sid}.jsonl').write_text('\n'.join(json.dumps(r) for r in control_log))
+        (out_dir/f'{sid}_servo.jsonl').write_text('\n'.join(json.dumps(r) for r in servo_log))
+    summary = report_scene(sh, servo_log, control_log)
+    if sh.terminal != 'success':
+        E.report(out_dir, sid, sh.terminal, detail=sh.detail, left=left, right=right, servo_log=servo_log,
+                 control_log=control_log, exc=sh.exc, extra=dict(run_summary=summary))
+    return sh.terminal
+
+
+def report_scene(sh, servo_log, control_log):
+    dec = [r['decision_ms'] for r in control_log if r.get('decision_ms')]
+    st = np.diff([r['t'] for r in servo_log]) if len(servo_log) > 1 else np.zeros(1)
+    msg = (f"  finished: {sh.terminal}, {len(servo_log)} servo / {len(control_log)} control steps, "
+           f"decision p95 {np.percentile(dec, 95) if dec else 0:.1f} ms, servo period max {st.max()*1e3:.1f} ms, "
+           f"refused {sh.refused}, snapped {sh.snapped}")
+    gaps = [r['gap_arm'] for r in servo_log if 'gap_arm' in r]
+    if gaps:
+        msg += f", min arm gap {min(gaps)*1e3:.0f} mm, min ball-left gap {min(r['gap_ball'] for r in servo_log)*1e3:.0f} mm"
+    lags = [r['lag_r'] for r in servo_log]
+    msg += f", max right follow {max(lags):.3f} rad" if lags else ''
+    print(msg)
+    return dict(servo_steps=len(servo_log), control_steps=len(control_log), servo_period_max_ms=round(float(st.max())*1e3, 1),
+                decision_p95_ms=round(float(np.percentile(dec, 95)), 1) if dec else None, refused=sh.refused,
+                snapped=sh.snapped, min_gap_arm_mm=round(min(gaps)*1e3, 1) if gaps else None,
+                max_right_follow_rad=round(max(lags), 4) if lags else None)

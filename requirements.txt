@@ -1,0 +1,12 @@
+# Python 3.11.15; tested 2026-11-19 on this build machine
+# torch: the CPU build is enough (the controller runs on CPU); install.sh uses the CPU wheel index
+numpy==2.4.6
+scipy==1.17.1
+torch==2.11.0
+mujoco==3.11.0
+opencv-python==5.0.0.93
+ur_rtde==1.6.5
+pyrealsense2==2.59.2.11152
+glfw==2.10.2
+PyOpenGL==3.1.10
+threadpoolctl
