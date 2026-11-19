@@ -44,7 +44,7 @@ from dlovw.cell.calibrated.config import Config
 LEFT_IP = ''
 RIGHT_IP = ''
 # ------------------------------------------------------------------------------------------------------------------
-SCENE_DIR = 'outputs/cell_calibrated_20261113/v41_ur5'
+SCENE_DIR = 'outputs/cell_calibrated_20261113/v42_ur5'
 CKPT = 'outputs/cell_calibrated_20261113/v39_occlusion/policy/seed_0/ckpt_r60.pt'
 DEFAULT_SCENES = ['test_reach_0087']                      # v41: the scene rechecked on UR5 arms
 COMMIT = (3., .1, .2)
@@ -158,8 +158,10 @@ def parse_args():
     ap.add_argument('--sphere-radius', type=float, default=None,
                     help='m; radius of the ball actually mounted (trained: 0.04). Sets the protected distance of the '
                          'planner and CBF, the ball-rope abort and the ball-arm checks; the policy is not retrained')
-    ap.add_argument('--sphere-centre-behind-tip', type=float, default=None,
-                    help='m; ball centre to probe tip along the probe axis, centre on the flange side (trained: 0.025)')
+    ap.add_argument('--sphere-centre-from-tip', type=float, default=None,
+                    help='m; ball centre along the probe axis from the tip, + = beyond the tip (away from the flange). '
+                         'Default: Config.sphere_offset, measured 2026-11-19 = 0.025 (the policy was trained at -0.025; '
+                         'it sees only the ball centre)')
     ap.add_argument('--no-video', dest='video', action='store_false',
                     help='do not record the front / top camera videos of each run (<scene>_front.mp4, _top.mp4)')
     ap.add_argument('--time-scale', type=float, default=TIME_SCALE,
@@ -177,8 +179,8 @@ def parse_args():
     a.ball = {}                                  # Config overrides for scene checks, runner and Controller alike
     if a.sphere_radius is not None:
         a.ball['sphere_radius'] = a.sphere_radius
-    if a.sphere_centre_behind_tip is not None:
-        a.ball['sphere_offset'] = (0., 0., -a.sphere_centre_behind_tip)
+    if a.sphere_centre_from_tip is not None:
+        a.ball['sphere_offset'] = (0., 0., a.sphere_centre_from_tip)
     return a
 
 
@@ -229,13 +231,15 @@ def make_factory(a, cfg):
         return lambda rec: StubController(rec, cfg)
     if a.check_only:
         return None
+    # the cell's ball (cfg: Config defaults + --sphere-* options), never the checkpoint's training-time values
+    ball = dict(sphere_radius=cfg.sphere_radius, sphere_offset=tuple(cfg.sphere_offset))
     if a.sync_controller:
         from dlovw.cell.calibrated.deployment import Controller
         return lambda rec: Controller(a.checkpoint, rec['goal_curve'], rec['target_left'],
-                                      threads=a.torch_threads, commit=COMMIT, ball=a.ball)
+                                      threads=a.torch_threads, commit=COMMIT, ball=ball)
     from async_controller import AsyncController
     return lambda rec: AsyncController(a.checkpoint, rec['goal_curve'], rec['target_left'],
-                                       threads=a.torch_threads, commit=COMMIT, time_scale=a.time_scale, ball=a.ball)
+                                       threads=a.torch_threads, commit=COMMIT, time_scale=a.time_scale, ball=ball)
 
 
 def run_one(rec, cfg, kin, left, right, cams, a, factory, out_dir, summary):
@@ -285,9 +289,9 @@ def main():
         sys.exit('在脚本开头填写 LEFT_IP / RIGHT_IP（或用 --left-ip / --right-ip）。')
     cfg = replace(Config(out=a.scene_dir), plan_commit=COMMIT, **a.ball)
     recs = {r['id']: r for r in json.loads((cfg.path/'tasks/test/scenes.json').read_text())['scenes']}
-    if a.ball:
-        print(f'球：半径 {cfg.sphere_radius*1e3:.1f} mm（训练 40 mm），球心在探针尖后 {-cfg.sphere_offset[2]*1e3:.1f} mm'
-              f'（训练 25 mm）；保护距离 {cfg.protected*1e3:.1f} mm。策略没有按这个球重训，先用 --check-only 和仿真复验')
+    print(f'球：半径 {cfg.sphere_radius*1e3:.1f} mm，球心在探针尖前方（远离法兰）{cfg.sphere_offset[2]*1e3:.1f} mm，'
+          f'保护距离 {cfg.protected*1e3:.1f} mm'
+          + ('。不是默认值：先用 --check-only 和仿真复验' if a.ball else ''))
     ids = a.scenes.split(',')
     missing = [i for i in ids if i not in recs]
     if missing:

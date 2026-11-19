@@ -144,7 +144,8 @@ def check_selftest(cfg, recs, checkpoint, commit, decisions=30, *, threads=1):
     d = np.load(f, allow_pickle=False)
     rec = recs[str(d['scene'])]
     images = {'front': d['front'], 'top': d['top']}
-    ctl = Controller(str(checkpoint), rec['goal_curve'], rec['target_left'], threads=threads, commit=commit)
+    ctl = Controller(str(checkpoint), rec['goal_curve'], rec['target_left'], threads=threads, commit=commit,
+                     ball=dict(sphere_radius=cfg.sphere_radius, sphere_offset=tuple(cfg.sphere_offset)))
     R = right_rotation(cfg)
     tcp = tcp_from_sphere(np.asarray(rec['motion']['center'], float), R, cfg)
     start, dec, t, frame_t = np.asarray(rec['start_left'], float), [], 0., 0.

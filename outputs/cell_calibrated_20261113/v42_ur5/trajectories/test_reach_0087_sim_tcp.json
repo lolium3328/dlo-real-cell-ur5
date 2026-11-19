@@ -1,7 +1,7 @@
 {
  "scene": "test_reach_0087",
  "checkpoint": "outputs/cell_calibrated_20261113/v39_occlusion/policy/seed_0/ckpt_r60.pt",
- "scene_dir": "outputs/cell_calibrated_20261113/v41_ur5",
+ "scene_dir": "outputs/cell_calibrated_20261113/v42_ur5",
  "terminal": "success",
  "min_surface_mm": 40.9,
  "final_rmse_mm": 6.5,
@@ -14,7 +14,7 @@
  "sphere_offset_m": [
   0.0,
   0.0,
-  -0.025
+  0.025
  ],
  "tcp_offset": [
   0,

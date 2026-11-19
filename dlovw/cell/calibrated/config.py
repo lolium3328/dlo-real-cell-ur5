@@ -39,7 +39,9 @@ class Config:
     workspace: str = 'outputs/visibility_reference_20261113/recommended_workspace.json'
     out: str = 'outputs/cell_calibrated_20261113'
     sphere_radius: float = .04
-    sphere_offset: tuple = (0., 0., -.025)
+    sphere_offset: tuple = (0., 0., .025)   # ball centre in the TCP (probe tip) frame. v42: measured on the cell
+    # 2026-11-19, 25 mm beyond the tip along the flange axis; v1-v41 (incl. the v39 policy's training) used -0.025,
+    # i.e. 25 mm behind the tip. The policy sees only the ball centre, so this moves the right arm, not the task.
     right_quat: tuple = (-.109382, .640856, -.640856, -.408218)   # v41 (UR5): the v40 pose rolled 90 deg about the
     # probe (the ball sits on the probe axis, so it does not move): with the UR5's shorter wrist the v40 roll put the
     # flange plate into the forearm (test_reach_0087, -2.3 mm); rolls 30-120 deg clear it. v40: (-.365998, .906308,

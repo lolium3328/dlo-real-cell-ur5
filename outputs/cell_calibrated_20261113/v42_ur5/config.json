@@ -3,12 +3,12 @@
   "config": {
     "profile": "outputs/real_rope_refine_20261113/profile.json",
     "workspace": "outputs/visibility_reference_20261113/recommended_workspace.json",
-    "out": "outputs/cell_calibrated_20261113/v41_ur5",
+    "out": "outputs/cell_calibrated_20261113/v42_ur5",
     "sphere_radius": 0.04,
     "sphere_offset": [
       0.0,
       0.0,
-      -0.025
+      0.025
     ],
     "right_quat": [
       -0.109382,
@@ -90,17 +90,17 @@
     "dlovw/cell/calibrated/__init__.py": "28b1a60a21937c0e2a783dcf74fc51cb77fa595fb85dc6db1a69d6fbf562d3d7",
     "dlovw/cell/calibrated/actuator_solver.py": "37b8a146ee44e63437d6e5f2f735422234d2af84015539a20db3a12d32639341",
     "dlovw/cell/calibrated/checkpoint.py": "b54e3d3f527cdcdbdee4ee7af22176885591ef5bea75c3bd954e78106f5dc45c",
-    "dlovw/cell/calibrated/config.py": "da6090a05def44dcb7627611ead9cdb0331c90c697d0bbca56bb0faa88e2543d",
+    "dlovw/cell/calibrated/config.py": "103800e213000402255de2edba8d42fde7592cdda7d9ff90b1e349099e1de9e0",
     "dlovw/cell/calibrated/constraints.py": "6757a3bbbd0fc5cbcb09feb1c0a0f28cbb4d5e617de5e090df8e1203541ad78b",
     "dlovw/cell/calibrated/data.py": "776cf4ce8ce322935d48524667a3d722797ceb1971c7078c2770acc92c93adda",
-    "dlovw/cell/calibrated/deployment.py": "4af789904d99881c64e19f46269d0e5f33b5c2b8201c60d60aa04d1fe53995a8",
+    "dlovw/cell/calibrated/deployment.py": "026ebeae7a0d2c6398b24eec3c46da2390b461e76094627c14cfcf4c440bf494",
     "dlovw/cell/calibrated/evaluation.py": "eaa2b62083770d2c7496456cee505af5e2986f73fe4eeccd4d69a308963cf68e",
     "dlovw/cell/calibrated/forecaster.py": "c76f627ebb7ce4a70cbee78dd8b193cec01d3f829d1ca95a905156dc112c3eae",
     "dlovw/cell/calibrated/headless.py": "4193186549359f80e48b81cb368e83a3477375f69f5088bb75202c0f2dab33ff",
     "dlovw/cell/calibrated/headless_occlusion.py": "e8ec1b729e5cd720b58d1d26bc940210351d7d43c53034437e619f4be1269e53",
-    "dlovw/cell/calibrated/kernels.py": "5085e350642da793495a3239ae2ff0bd1ccbd668f19557780087892a9e0c2501",
+    "dlovw/cell/calibrated/kernels.py": "febb18745ea26da6a86a46934642889b7f688c1222cbe115746fb86d08ddafd1",
     "dlovw/cell/calibrated/model.py": "83657b52bf8ecc4a588f357cf6fcddf0900fc5df0275d023b8c308c11f59c6bd",
-    "dlovw/cell/calibrated/observations.py": "0166adfb04160bcd63cfac7993e2af78dcfa724595f7fc52acca8b7d4379eb8e",
+    "dlovw/cell/calibrated/observations.py": "ff1f3e1a86d4314426f638cdb7de5631e899e8ee53db27586fa7bd5b3ebd9b97",
     "dlovw/cell/calibrated/package.py": "727992d2e456cdca4d7d2fc4a0ec6dba961a74d813450807b694bf55835df1d1",
     "dlovw/cell/calibrated/physics.py": "489a1b563d6ad5b3bc0ec34fe733264ba7b76b270ee36c041cc4a21ccfcc623d",
     "dlovw/cell/calibrated/render.py": "af4ac7eb7ceefbf46aa8607f9a137556df051c5af79333691239c69002403843",
@@ -109,7 +109,7 @@
     "dlovw/cell/calibrated/session.py": "1c66b345510fa5905ca9d49e7acbc93e9188d7c93e1318b4c8c10c60b3b1a05d",
     "dlovw/cell/calibrated/tasks.py": "f68d390062aa89929bbd631c22ba2f6a38b78eb1c7e19a19ad4855f0d666863c",
     "dlovw/cell/calibrated/training.py": "8b59f53c388e91ab48e0ef756df01e174d456683d543db07265ddb17be2d4b5d",
-    "dlovw/cell/cbf.py": "b826a415bf9ce15976a78b04b845db938d947e523fde5d696060e096ab8e748b",
+    "dlovw/cell/cbf.py": "867c4c680a3735980ec423ec6f965942d12163ba9d17e40775541c78a565c50b",
     "dlovw/cell/cost.py": "4aaf4d22f6101862284c633f4d256cec5d85858f982b5f82163e95f018dab933",
     "dlovw/cell/planner.py": "eace1f105f2ab3042fd2d0c7546208d781d026976145ad28e53fbfb6d60b9717",
     "dlovw/imagination/r10.py": "2c314be80cc0f8be78094841d89ba1b005cadcbd1aea4a1a0614bb4b5ffd17dd",
@@ -118,8 +118,8 @@
     "dlovw/imagination/world_model.py": "4d0a3ad537f41734cfcd564cb9fb64cd3076764cdfa956cb107acca0fa1ac738",
     "dlovw/imagination/episodes.py": "0145304ecebbb7bf6642de34c1967b34df6b3fbca80a3b7f25a1595e710cd2bf",
     "dlovw/imagination/obstacle_model.py": "1a5056c9e271cd3d2e08d794c315c3c05f7f735e76582ac4989da836480d2676",
-    "dlovw/imagination/rgb_rope.py": "7a7cc9c411ca9a27d1ef979b18ec3462762b3d06c7e7976f9e1897a75b9e0937",
-    "dlovw/real_rope/tracking.py": "5f008dacaca3538c06ab44e38f86cdfa15681bb71745661f15e7398536270ce5"
+    "dlovw/imagination/rgb_rope.py": "47dd0d94b05ed248b823c7382efc0e6cfbb0791dd9831553d1cc0bcd76449d5e",
+    "dlovw/real_rope/tracking.py": "f3027b5c7a99f3380b284dba95f8bd4406debdbdc0fc847ce7b27c3d8a7556d5"
   },
-  "code_commit": "0a855998b86cca03fea7d09352f42ab886a63219"
+  "code_commit": "5efc55d68fa744a418b3ff27895d18a46b9e250a"
 }

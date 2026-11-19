@@ -22,7 +22,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
-SCENES = 'outputs/cell_calibrated_20261113/v41_ur5'
+SCENES = 'outputs/cell_calibrated_20261113/v42_ur5'
 POLICY = 'outputs/cell_calibrated_20261113/v39_occlusion'
 CKPT = f'{POLICY}/policy/seed_0/ckpt_r60.pt'
 INPUTS = ['outputs/real_rope_refine_20261113/profile.json',

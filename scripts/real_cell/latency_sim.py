@@ -116,7 +116,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('--scenes', default=DEMO, help="comma-separated ids, or 'all' (every accepted test scene)")
     ap.add_argument('--conds', default='hold:0:0,hold:6:0,hold:8:0', help='mode:L:Q,...')
-    ap.add_argument('--scene-dir', default='outputs/cell_calibrated_20261113/v41_ur5')
+    ap.add_argument('--scene-dir', default='outputs/cell_calibrated_20261113/v42_ur5')
     ap.add_argument('--policy', default='outputs/cell_calibrated_20261113/v39_occlusion/policy/seed_0/ckpt_r60.pt')
     ap.add_argument('--workers', type=int, default=2)
     ap.add_argument('--out', default='outputs/real_runs/latency_sim')

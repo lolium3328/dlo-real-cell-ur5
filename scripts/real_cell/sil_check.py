@@ -181,6 +181,7 @@ def main():
                            video=not a.no_video)
     extra = {} if a.sync_controller else dict(time_scale=a.time_scale, tracker_delay=a.tracker_delay_s,
                                               planner_delay=a.planner_delay_s)
+    extra['ball'] = dict(sphere_radius=cfg.sphere_radius, sphere_offset=tuple(cfg.sphere_offset))   # the cell's ball
     cls = Controller if a.sync_controller else SlowController
     out = Path(a.out)/time.strftime('%Y%m%d_%H%M%S')
     summary = {}
