@@ -13,4 +13,7 @@ cell-PC commits (Windows preflight, timing logs, CB3 identification).
     .venv/bin/python scripts/real_cell/run_real_cell.py --left-ip <left> --right-ip <right> --torch-threads 3
 
 `MANIFEST.json` holds the sha256 of every packaged file; `.gitattributes` keeps line endings untouched so the
-check passes on Windows checkouts too. Built from lolium3328/dlo-value-wm @ 0fe93c0.
+check passes on Windows checkouts too. Built from lolium3328/dlo-value-wm @ 5efc55d.
+
+Simulated left / right TCP trajectory of test_reach_0087 (controller base frames, UR poses + joints, sim and 6x real time):
+`outputs/cell_calibrated_20261113/v41_ur5/trajectories/test_reach_0087_sim_tcp.csv` (columns and frames in the .json).

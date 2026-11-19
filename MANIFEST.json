@@ -1,7 +1,7 @@
 {
- "built": "2026-11-19 22:46:27",
+ "built": "2026-11-19 22:59:41",
  "source": "/home/anilam/Codes/dlo/dlo-value-wm-r10fix",
- "git_head": "0fe93c040bcf3e305939f5a79f70bbe5074ee986",
+ "git_head": "5efc55d68fa744a418b3ff27895d18a46b9e250a",
  "files": {
   "dlovw/__init__.py": "15d9468227b1fdd2201c3da7b6c3b3b3644333e70e8f7b0ed3c1be5fb51b6905",
   "dlovw/belief.py": "d99751a257ca471bb3000d5c3e5a8f4efcfec60e856dcbb9d5f840b30064534e",
@@ -143,15 +143,18 @@
   "outputs/cell_calibrated_20261113/v41_ur5/scene.json": "ff62cfdff47c13e2e460fe26cd19e74424aff2c23e5aab0cb4198d03bef695e1",
   "outputs/cell_calibrated_20261113/v41_ur5/scene.xml": "800a2f510ae9dcfe6240e7a8a882a903c1d4e9cc92a7e2ad4ccae49ad9ba2de6",
   "outputs/cell_calibrated_20261113/v41_ur5/tasks/test/scenes.json": "8a7621b1aa42cd73a71d7ef061a7607809e5bf78ce7fc20dcbeb23da93080bd8",
+  "outputs/cell_calibrated_20261113/v41_ur5/trajectories/test_reach_0087_sim_tcp.csv": "c4e2435c20e7deef6171a4e9181cd4ab16994abf42d50d2d7afb17a9627b528f",
+  "outputs/cell_calibrated_20261113/v41_ur5/trajectories/test_reach_0087_sim_tcp.json": "3d56d6e9b460aced17a7a8c8d5f57ec492eeafaeebf10428852b40f86e2c2720",
   "outputs/real_rope_refine_20261113/profile.json": "34e78766f5c88cd7fc9711155615cc82960386222ebe773e0e99e176fee9dab2",
   "outputs/tcp_camera_recalibration_20261113/candidate_extrinsics.json": "2826283078fd962ec1a9c542c1f66ce5c12706e1472c5c9838799a8d6e8a30c8",
   "outputs/visibility_reference_20261113/recommended_workspace.json": "f3176c556d8acc9cab1cd1db27a4468f4175308da0eca63e7f2085e1ccce3cca",
   "requirements.txt": "48bd7fafadcad7067b023663cfe9e771588b701a2687a28e47a472948fde16f9",
   "scripts/real_cell/async_controller.py": "3f8b647ffcc4bc33fd53549aa0b19a36a24d4213710e062213191853bb7d6102",
   "scripts/real_cell/errors.py": "aada519236f1294b9cdfcc0a52ed2a1c027d83d73eb8d44333b7b05e70d2ce8a",
+  "scripts/real_cell/export_sim_trajectory.py": "760817ee02ea655d331d2d525038b25002d425ff86b7ca9e79f4b2d7f4a0c452",
   "scripts/real_cell/geometry.py": "a07181cb789c4c4457657e7d247b2a6a6184960c2793d87b93a769f4a80a0bad",
   "scripts/real_cell/latency_sim.py": "dce88ffd25fcb66142d73beb3b43df0729cd40c55056055c0b0f330c956e9689",
-  "scripts/real_cell/make_package.py": "2cb1ef2f47b27762ac0fe9c856feebf6096c4f8737bc854b161a15e4e5ae6772",
+  "scripts/real_cell/make_package.py": "e2b8700647ce9c3c3eceff92d2289064a6b77708079acf33b5f8e2e73b902569",
   "scripts/real_cell/planning.py": "b381d0a2b386936ceec5e536f64970766bf04ae6933415c24fc62cea5bf3b3f1",
   "scripts/real_cell/preflight.py": "5d71d2dede6cbe7e236bc3e0d65ffd9a08791973194ceb368708197a5cbcd8d3",
   "scripts/real_cell/replay_check.py": "fa1cedf6a7f5ad6d5ee6974ff51a10b2bdc6456ee78dcdaff8723aa7888a9f3d",
@@ -161,8 +164,8 @@
   "scripts/real_cell/sil_check.py": "0e466ff3a374c526cc5024be658f820ea641cf664027056a3ab5873a26317af3",
   "scripts/real_cell/timing_trace.py": "ab2308ab9d87ca2926864ed1e4b4a21b5761e95f4dea55e96c72a6b3fb691fe7",
   "scripts/real_cell/video.py": "264007c9aafef3ab0f398497cd090face9918cb92aa2c6fbf80f423362647846",
-  "scripts/real_cell/部署说明.md": "dddc6e39a4336266e57b005986b3f61f49cd6dbe24063b145af56abffcd6c54d",
+  "scripts/real_cell/部署说明.md": "c28267f2e4f80c82832f36de3794f6a904e3aa897eb4ec9e9a3c375b63d99c20",
   "selftest/frames.npz": "9a822d283f2305b6814bab1051372fddd61fa380269bb821d04b1dbd1d962038",
-  "部署说明.md": "dddc6e39a4336266e57b005986b3f61f49cd6dbe24063b145af56abffcd6c54d"
+  "部署说明.md": "c28267f2e4f80c82832f36de3794f6a904e3aa897eb4ec9e9a3c375b63d99c20"
  }
 }

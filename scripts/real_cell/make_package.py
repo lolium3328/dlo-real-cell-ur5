@@ -136,6 +136,8 @@ def main():
         copy(p, dest/p.relative_to(ROOT))
     for d in DATA:
         copy(ROOT/d, dest/d)
+    for p in sorted((ROOT/SCENES/'trajectories').glob('*')):       # export_sim_trajectory.py outputs
+        copy(p, dest/p.relative_to(ROOT))
     n_assets = copy_scene_xml(dest)
     render_selftest(dest)
     write_requirements(dest)
