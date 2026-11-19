@@ -112,7 +112,7 @@ def make_plan(rec, cfg, kin, left, right, args):
         gap, pair = G.arm_arm_gap(PL, PR)
         k = int(np.argmin(gap.min(1)))
         _gap_report(info, fail, 'gap_arm_arm_mm', gap, args.min_gap_m, f'(any left workspace pose, {pair}, t = {k*args.ik_dt:.1f} s)')
-        _gap_report(info, fail, 'gap_ball_left_arm_mm', G.ball_arm_gap(tr[:len(Q)], PL), args.min_gap_m)
+        _gap_report(info, fail, 'gap_ball_left_arm_mm', G.ball_arm_gap(tr[:len(Q)], PL, cfg.sphere_radius), args.min_gap_m)
         # ---- right homing (moveJ interpolation, left arm already at its start) ----
         PRh = np.array([kin.points('right', qr+(Q[0]-qr)*a) for a in np.linspace(0, 1, 40)])
         _gap_report(info, fail, 'gap_right_homing_vs_left_mm', G.arm_arm_gap(PL[:1], PRh)[0], args.min_gap_m)

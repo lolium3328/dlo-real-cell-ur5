@@ -1,5 +1,5 @@
 """Real-input-only controller. Returns bounded commands; never sends robot commands."""
-from dataclasses import fields
+from dataclasses import fields, replace
 import time
 import numpy as np
 import torch
@@ -16,8 +16,11 @@ from .observations import BallReadings, QualityGate, EvidenceMemory, encode, MEA
 
 
 class Controller:
-    def __init__(self, checkpoint, goal_curve, target_left, threads=1, commit=None):
-        """commit: optional (abs, rel, risk) planner commitment (v39 demo: 3, 0.1, 0.2); None = r10 switch rule."""
+    def __init__(self, checkpoint, goal_curve, target_left, threads=1, commit=None, ball=None):
+        """commit: optional (abs, rel, risk) planner commitment (v39 demo: 3, 0.1, 0.2); None = r10 switch rule.
+        ball: optional dict(sphere_radius=m, sphere_offset=(x, y, z) m in the TCP frame) for a ball other than the
+        trained one (radius 0.04, centre 0.025 m behind the probe tip). The networks do not see the radius; it sets
+        the protected distance of the planner cost and the CBF, and the offset sets the ball centre from the TCP."""
         torch.set_num_threads(threads)
         self.nets, self.metadata = load(checkpoint)
         torch.manual_seed(int(self.metadata.get('seed', 0)))
@@ -26,6 +29,8 @@ class Controller:
         self.config = Config(**raw)
         if self.config.provenance()['inputs'] != self.metadata['config']['inputs']:
             raise ValueError('Deployment physical inputs differ from checkpoint')
+        if ball:
+            self.config = replace(self.config, **ball)
         self.wm, self.fc, self.actor, self.critic = self.nets
         self.lim = CalibratedLimits.from_config(self.config)
         self.planner = CellPlanner(self.wm, self.fc, self.actor, self.critic, self.lim,

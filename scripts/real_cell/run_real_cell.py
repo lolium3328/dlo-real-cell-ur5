@@ -155,6 +155,11 @@ def parse_args():
     ap.add_argument('--max-stale-s', type=float, default=3.)
     ap.add_argument('--abort-surface-m', type=float, default=.002, help='abort if estimated ball-rope surface gap < this')
     ap.add_argument('--camera-latency', type=float, default=0.)
+    ap.add_argument('--sphere-radius', type=float, default=None,
+                    help='m; radius of the ball actually mounted (trained: 0.04). Sets the protected distance of the '
+                         'planner and CBF, the ball-rope abort and the ball-arm checks; the policy is not retrained')
+    ap.add_argument('--sphere-centre-behind-tip', type=float, default=None,
+                    help='m; ball centre to probe tip along the probe axis, centre on the flange side (trained: 0.025)')
     ap.add_argument('--no-video', dest='video', action='store_false',
                     help='do not record the front / top camera videos of each run (<scene>_front.mp4, _top.mp4)')
     ap.add_argument('--time-scale', type=float, default=TIME_SCALE,
@@ -167,6 +172,13 @@ def parse_args():
         ap.error('--time-scale must be >= 1')
     if a.sync_controller and a.time_scale != 1.:
         ap.error('--sync-controller supports only --time-scale 1')
+    if a.sphere_radius is not None and not .01 <= a.sphere_radius <= .1:
+        ap.error('--sphere-radius must be 0.01-0.1 m')
+    a.ball = {}                                  # Config overrides for scene checks, runner and Controller alike
+    if a.sphere_radius is not None:
+        a.ball['sphere_radius'] = a.sphere_radius
+    if a.sphere_centre_behind_tip is not None:
+        a.ball['sphere_offset'] = (0., 0., -a.sphere_centre_behind_tip)
     return a
 
 
@@ -220,10 +232,10 @@ def make_factory(a, cfg):
     if a.sync_controller:
         from dlovw.cell.calibrated.deployment import Controller
         return lambda rec: Controller(a.checkpoint, rec['goal_curve'], rec['target_left'],
-                                      threads=a.torch_threads, commit=COMMIT)
+                                      threads=a.torch_threads, commit=COMMIT, ball=a.ball)
     from async_controller import AsyncController
     return lambda rec: AsyncController(a.checkpoint, rec['goal_curve'], rec['target_left'],
-                                       threads=a.torch_threads, commit=COMMIT, time_scale=a.time_scale)
+                                       threads=a.torch_threads, commit=COMMIT, time_scale=a.time_scale, ball=a.ball)
 
 
 def run_one(rec, cfg, kin, left, right, cams, a, factory, out_dir, summary):
@@ -271,8 +283,11 @@ def main():
     os.chdir(Path(__file__).resolve().parents[2])    # all package paths are relative to its root
     if not a.dry_run and not (a.left_ip and a.right_ip):
         sys.exit('在脚本开头填写 LEFT_IP / RIGHT_IP（或用 --left-ip / --right-ip）。')
-    cfg = replace(Config(out=a.scene_dir), plan_commit=COMMIT)
+    cfg = replace(Config(out=a.scene_dir), plan_commit=COMMIT, **a.ball)
     recs = {r['id']: r for r in json.loads((cfg.path/'tasks/test/scenes.json').read_text())['scenes']}
+    if a.ball:
+        print(f'球：半径 {cfg.sphere_radius*1e3:.1f} mm（训练 40 mm），球心在探针尖后 {-cfg.sphere_offset[2]*1e3:.1f} mm'
+              f'（训练 25 mm）；保护距离 {cfg.protected*1e3:.1f} mm。策略没有按这个球重训，先用 --check-only 和仿真复验')
     ids = a.scenes.split(',')
     missing = [i for i in ids if i not in recs]
     if missing:

@@ -122,8 +122,11 @@ def main():
     ap.add_argument('--out', default='outputs/real_runs/latency_sim')
     ap.add_argument('--tag', default='')
     ap.add_argument('--rgb', action='store_true', help='render + RecordedRopeTracker instead of the headless tracking model')
+    ap.add_argument('--sphere-radius', type=float, default=None,
+                    help='m; a ball other than the trained 0.04 (clearance, planner cost and CBF all use it)')
     a = ap.parse_args()
-    cfg = replace(Config(out=a.scene_dir), plan_commit=(3., .1, .2), headless=not a.rgb)
+    ball = {} if a.sphere_radius is None else dict(sphere_radius=a.sphere_radius)
+    cfg = replace(Config(out=a.scene_dir), plan_commit=(3., .1, .2), headless=not a.rgb, **ball)
     scenes = json.loads((cfg.path/'tasks/test/scenes.json').read_text())['scenes']
     recs = [r for r in scenes if r.get('accept', True)] if a.scenes == 'all' else \
         [{r['id']: r for r in scenes}[i] for i in a.scenes.split(',')]

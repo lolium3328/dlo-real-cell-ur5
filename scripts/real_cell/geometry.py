@@ -10,7 +10,7 @@ import numpy as np
 # wrist_1->wrist_2, wrist_2->wrist_3, wrist_3->TCP (flange, plate, probe)
 RADII = np.array([.075, .065, .065, .055, .05, .05, .04])
 NAMES = ['base', 'shoulder', 'upper_arm', 'forearm', 'wrist1', 'wrist2', 'tool']
-BALL_R = .04
+BALL_R = .04                             # default only; callers pass cfg.sphere_radius (--sphere-radius)
 
 
 def seg_seg(p1, q1, p2, q2):
@@ -51,11 +51,11 @@ def pair_gap(PL, PR):
     return float((seg_seg(AL[:, None], BL[:, None], AR[None], BR[None])-RADII[:, None]-RADII[None]).min())
 
 
-def ball_arm_gap(centres, P):
+def ball_arm_gap(centres, P, ball_r=BALL_R):
     """centres (n,3) ball path, P (m,8,3) arm configurations -> gap (n,m)."""
     A, B = _ends(P)
     c = centres[:, None, None, :]
-    d = seg_seg(c, c, A[None], B[None])-RADII-BALL_R
+    d = seg_seg(c, c, A[None], B[None])-RADII-ball_r
     return d.min(-1)
 
 

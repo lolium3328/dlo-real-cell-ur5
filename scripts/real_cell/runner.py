@@ -152,7 +152,7 @@ def servo_loop(sh, plan, left, right, kin, cfg, args, T0, log):
         if not args.no_capsule:                  # actual joints of both arms, every servo step
             PL = kin.points('left', ql)
             gap_arm = G.pair_gap(PL, kin.points('right', qr))
-            gap_ball = float(G.ball_arm_gap(ball_centre(pr, cfg)[None], PL[None]).min())
+            gap_ball = float(G.ball_arm_gap(ball_centre(pr, cfg)[None], PL[None], cfg.sphere_radius).min())
             row.update(gap_arm=round(gap_arm, 4), gap_ball=round(gap_ball, 4))
             if min(gap_arm, gap_ball) < args.abort_gap_m:
                 sh.finish('abort_arm_clearance', source='servo', step_id=servo_step_id, 两臂间隙_mm=round(gap_arm*1e3, 1), 球与左臂间隙_mm=round(gap_ball*1e3, 1),
