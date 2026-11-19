@@ -126,7 +126,7 @@ def report(out_dir, scene, terminal, *, code=None, detail=None, left=None, right
     if out_dir is not None:
         out_dir.mkdir(parents=True, exist_ok=True)
         path = out_dir/f'{scene}_error.json'
-        path.write_text(json.dumps(rep, indent=1, ensure_ascii=False, default=str))
+        path.write_text(json.dumps(rep, indent=1, ensure_ascii=False, default=str), encoding='utf-8')
     bar = '=' * 72
     lines = [bar, f'  {"警告" if code.startswith("W") else "错误"} {code}  {title}', f'  场景: {scene}    终止: {terminal}']
     if rep['t_s'] is not None:

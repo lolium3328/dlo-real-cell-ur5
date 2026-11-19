@@ -14,6 +14,9 @@ from ..imagination import camera_model as cm
 from ..imagination.rgb_rope import RopeRGB, chain
 
 
+MAX_FRAME_AGE_S = .1
+
+
 class QualityState:
     """Temporal quality from image evidence only; usable by non-R1 frontends too."""
     def __init__(self, n=39, missing_speed_m_s=.15):
@@ -66,11 +69,13 @@ class RecordedRopeTracker(RopeRGB):
             hsv = cv2.cvtColor(rgb, cv2.COLOR_RGB2HSV)
             rope = cv2.inRange(hsv, np.array(HSV_LO, np.uint8), np.array(HSV_HI, np.uint8))
             rope = cv2.morphologyEx(rope, cv2.MORPH_CLOSE, np.ones((3, 3), np.uint8))
-            n, lab, st, _ = cv2.connectedComponentsWithStats(rope)
+            _, lab, st, _ = cv2.connectedComponentsWithStats(rope)
             # Retain short fragments around an occluder; offline fitting uses >=100.
-            rope[np.isin(lab, np.flatnonzero(st[1:, 4] < 30)+1)] = 0
+            small = st[:, cv2.CC_STAT_AREA] < 30
+            small[0] = False  # label 0 is the background
+            rope[small[lab]] = 0
             r = rope > 0
-            s, v = hsv[..., 1].astype(int), hsv[..., 2].astype(int)
+            s, v = hsv[..., 1], hsv[..., 2]
             occ = ((v >= 70) | ((s >= 90) & (v >= 45))) & ~cv2.dilate(rope, np.ones((5, 5), np.uint8)).astype(bool)
             occ = cv2.dilate(occ.astype(np.uint8), np.ones((7, 7), np.uint8)).astype(bool)
             dt = cv2.distanceTransform((~r).astype(np.uint8), cv2.DIST_L2, 5)
@@ -86,7 +91,7 @@ class RecordedRopeTracker(RopeRGB):
             raise ValueError('Observation times must strictly increase')
         view_t = {role: float((view_t or {}).get(role, t)) for role in rgbs}
         # Reused/stale frames must not refresh the last-observed timestamp.
-        fresh = {r: im for r, im in rgbs.items() if 0 <= t-view_t[r] <= .1
+        fresh = {r: im for r, im in rgbs.items() if 0 <= t-view_t[r] <= MAX_FRAME_AGE_S
                  and view_t[r] > self.last_view_time.get(r, -np.inf)}
         if fresh:
             estimate = super().update(fresh, grip, t=t, view_t=view_t, **kwargs)

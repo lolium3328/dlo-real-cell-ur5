@@ -13,7 +13,7 @@ slider / TCP / ur_rtde script, cameras) and blocks motion on any FAIL. Every fai
 code (errors.py). See 部署说明.md in the package root for the full procedure.
 
     python scripts/real_cell/run_real_cell.py --preflight-only --left-ip A --right-ip B  # safety checks only
-    python scripts/real_cell/run_real_cell.py --touch-check --left-ip A --right-ip B     # base-to-base transform
+    python scripts/real_cell/run_real_cell.py --touch-check --left-ip A --right-ip B     # read-only, Local Control
     python scripts/real_cell/run_real_cell.py --check-only --left-ip A --right-ip B      # no motion, all scenes
     python scripts/real_cell/run_real_cell.py --left-ip A --right-ip B                   # the default scene(s), DEFAULT_SCENES
     python scripts/real_cell/run_real_cell.py --dry-run [--check-only]                  # mock robots, stub policy
@@ -26,6 +26,7 @@ import argparse
 import json
 import sys
 import time
+from contextlib import closing
 from dataclasses import replace
 from pathlib import Path
 
@@ -34,7 +35,7 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import errors as E
 import preflight
-from robots import Kin, MockUR, NoCameras, RealSense, T_RIGHT, UR, tool_rotation_error, wrap
+from robots import Kin, MockUR, NoCameras, RealSense, T_RIGHT, UR, URReceive, tool_rotation_error, wrap
 from planning import make_plan, print_report
 from runner import run_scene
 from dlovw.cell.calibrated.config import Config
@@ -47,6 +48,7 @@ SCENE_DIR = 'outputs/cell_calibrated_20261113/v41_ur5'
 CKPT = 'outputs/cell_calibrated_20261113/v39_occlusion/policy/seed_0/ckpt_r60.pt'
 DEFAULT_SCENES = ['test_reach_0087']                      # v41: the scene rechecked on UR5 arms
 COMMIT = (3., .1, .2)
+TIME_SCALE = 6.                                           # see --time-scale
 
 
 class StubController:
@@ -105,6 +107,13 @@ def verify_home(left, right, plan, rec, args):
     return bad
 
 
+def positive_threads(value):
+    threads = int(value)
+    if threads < 1:
+        raise argparse.ArgumentTypeError('Torch thread count must be at least 1')
+    return threads
+
+
 def parse_args():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('--scenes', default=','.join(DEFAULT_SCENES))
@@ -114,12 +123,14 @@ def parse_args():
     ap.add_argument('--scene-dir', default=SCENE_DIR)
     ap.add_argument('--out', default='outputs/real_runs')
     ap.add_argument('--preflight-only', action='store_true', help='run the safety checks (robots, cameras, software) and exit')
-    ap.add_argument('--touch-check', action='store_true', help='touch both probe tips together to check the base transform')
+    ap.add_argument('--touch-check', action='store_true', help='read both TCP poses in Local Control to check the base transform')
     ap.add_argument('--skip-preflight', action='store_true', help='do not block motion on preflight failures (not recommended)')
     ap.add_argument('--check-only', action='store_true', help='read-only: IK, limits, clearances; no motion')
     ap.add_argument('--no-capsule', action='store_true', help='skip the two-arm capsule clearance checks (plan and run)')
     ap.add_argument('--ignore-check', action='store_true', help='run even when the feasibility check fails')
     ap.add_argument('--dry-run', action='store_true', help='mock robots, no cameras, stub policy')
+    ap.add_argument('--torch-threads', type=positive_threads, default=1,
+                    help='Torch CPU threads for both the recorded-frame self-test and the live planner')
     ap.add_argument('--sync-controller', action='store_true',
                     help='original single-thread Controller (planning stalls the low level; not recommended)')
     ap.add_argument('--ik-dt', type=float, default=.04, help='s; sampling of the planned right-arm joint trajectory')
@@ -144,8 +155,18 @@ def parse_args():
     ap.add_argument('--max-stale-s', type=float, default=3.)
     ap.add_argument('--abort-surface-m', type=float, default=.002, help='abort if estimated ball-rope surface gap < this')
     ap.add_argument('--camera-latency', type=float, default=0.)
+    ap.add_argument('--no-video', dest='video', action='store_false',
+                    help='do not record the front / top camera videos of each run (<scene>_front.mp4, _top.mp4)')
+    ap.add_argument('--time-scale', type=float, default=TIME_SCALE,
+                    help='run the scene this many times slower than simulated (ball, left arm, decision period, scene '
+                         'time limits); 1 = real time. Default 6: the 2026-11-19 cell PC needs ~0.46 s from camera '
+                         'frame to action, ~8 of the 10 simulated steps of a decision at 6x (runner.py)')
     a = ap.parse_args()
     a.commit = COMMIT
+    if not a.time_scale >= 1.:
+        ap.error('--time-scale must be >= 1')
+    if a.sync_controller and a.time_scale != 1.:
+        ap.error('--sync-controller supports only --time-scale 1')
     return a
 
 
@@ -158,7 +179,7 @@ def connect(a, kin, out_dir):
     except ConnectionError as e:
         E.report(out_dir, 'startup', 'connection_failed', code='E501', detail={'错误': str(e)})
         sys.exit(1)
-    need_cams = not (a.check_only or a.touch_check)
+    need_cams = not a.check_only
     try:
         cams = RealSense(a.camera_latency) if need_cams else NoCameras()
     except Exception as e:                           # noqa: BLE001
@@ -168,6 +189,29 @@ def connect(a, kin, out_dir):
     return left, right, cams
 
 
+def run_touch_check(a, cfg, out_dir):
+    def receiver(ip, side):
+        return MockUR(kin, side) if a.dry_run else URReceive(ip, side)
+
+    kin = Kin(cfg.path/'scene.xml') if a.dry_run else None
+    try:
+        with closing(receiver(a.left_ip, 'left')) as left, closing(receiver(a.right_ip, 'right')) as right:
+            ok, errs = preflight.touch_check(left, right)
+    except ConnectionError as e:
+        E.report(out_dir, 'touch_check', 'connection_failed', code='E501', detail={'错误': str(e)})
+        sys.exit(1)
+    except ValueError as e:
+        E.report(out_dir, 'touch_check', 'invalid_input', code='E206', detail={'错误': str(e)})
+        sys.exit(1)
+    except KeyboardInterrupt as e:
+        E.report(out_dir, 'touch_check', 'user_interrupt', code='E901', exc=e)
+        sys.exit(130)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    (out_dir/'touch_check.json').write_text(json.dumps(dict(ok=ok, errors_m=errs), indent=1), encoding='utf-8')
+    if not ok:
+        sys.exit(1)
+
+
 def make_factory(a, cfg):
     if a.dry_run:
         return lambda rec: StubController(rec, cfg)
@@ -175,9 +219,11 @@ def make_factory(a, cfg):
         return None
     if a.sync_controller:
         from dlovw.cell.calibrated.deployment import Controller
-    else:
-        from async_controller import AsyncController as Controller
-    return lambda rec: Controller(a.checkpoint, rec['goal_curve'], rec['target_left'], commit=COMMIT)
+        return lambda rec: Controller(a.checkpoint, rec['goal_curve'], rec['target_left'],
+                                      threads=a.torch_threads, commit=COMMIT)
+    from async_controller import AsyncController
+    return lambda rec: AsyncController(a.checkpoint, rec['goal_curve'], rec['target_left'],
+                                       threads=a.torch_threads, commit=COMMIT, time_scale=a.time_scale)
 
 
 def run_one(rec, cfg, kin, left, right, cams, a, factory, out_dir, summary):
@@ -233,20 +279,24 @@ def main():
         sys.exit(f'未知场景: {missing}')
     out_dir = Path(a.out)/time.strftime('%Y%m%d_%H%M%S')
     print(f'日志目录: {out_dir}')
+    k = a.time_scale
+    print(f'时间缩放 {k:g}x：球和左臂按仿真速度的 1/{k:g} 运动（左臂最大 {cfg.speed/k*1e3:.1f} mm/s），'
+          f'决策周期 {cfg.decision_dt*k:.2f} s，场景时限 {cfg.max_time_s*k:.0f} s'
+          + ('' if k == 1 else '；日志里的 s 是仿真时间，其余 *_s 是真实时间'))
+    if a.touch_check:
+        run_touch_check(a, cfg, out_dir)
+        return
     kin = Kin(cfg.path/'scene.xml')
     left, right, cams = connect(a, kin, out_dir)
     summary = {}
     try:
-        if a.touch_check:
-            ok, errs = preflight.touch_check(left, right)
-            out_dir.mkdir(parents=True, exist_ok=True)
-            (out_dir/'touch_check.json').write_text(json.dumps(dict(ok=ok, errors_m=errs), indent=1))
-            return
         if not a.skip_preflight:
             real = not a.dry_run
             ok, res = preflight.run(cfg, recs, a, out_dir, left if real else None, right if real else None,
                                     cams if real and not a.check_only else None, selftest=not a.check_only)
             if a.preflight_only:
+                if not ok:
+                    sys.exit(1)
                 return
             if not ok and not a.check_only:
                 E.report(out_dir, 'preflight', 'preflight_failed', code='E700',
@@ -271,7 +321,8 @@ def main():
         right.close()
         if summary:
             out_dir.mkdir(parents=True, exist_ok=True)
-            (out_dir/'feasibility.json').write_text(json.dumps(summary, indent=1, default=float, ensure_ascii=False))
+            (out_dir/'feasibility.json').write_text(
+                json.dumps(summary, indent=1, default=float, ensure_ascii=False), encoding='utf-8')
             print('\n场景汇总:', {k: v.get('terminal', 'OK' if v['ok'] else 'FAIL') for k, v in summary.items()})
 
 

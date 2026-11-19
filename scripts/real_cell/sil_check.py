@@ -8,7 +8,13 @@ mock robots, against a simulated cell in REAL TIME.
 
 Tests timing, threading and the closed loop; not the robots, the real cameras or the real rope.
 
+--time-scale k slows the run as on the real cell (the simulated rope still runs in real time, so this also tests
+that the slowed cell behaves like the trained one). --tracker-delay-s / --planner-delay-s add wall-clock sleeps to
+every image tracker update / planner decision to emulate a slower PC (cell PC 2026-11-19: tracker ~0.12 s, planner
+~0.37 s; this machine ~0.03 / ~0.06 s).
+
     nice -n 10 python scripts/real_cell/sil_check.py --scenes test_hold_0116 [--sync-controller]
+    nice -n 10 python scripts/real_cell/sil_check.py --scenes test_reach_0087 --tracker-delay-s .09 --planner-delay-s .31
 """
 import os
 for _v in ('OPENBLAS_NUM_THREADS', 'OMP_NUM_THREADS', 'MKL_NUM_THREADS'):
@@ -37,6 +43,25 @@ from dlovw.cell.calibrated.physics import RopeState, surface_distance
 from dlovw.cell.calibrated.render import SceneView
 
 
+class SlowController(AsyncController):
+    """AsyncController with extra wall-clock time in each image tracker update and each planner decision."""
+    def __init__(self, *a, tracker_delay=0., planner_delay=0., **kw):
+        super().__init__(*a, **kw)
+        observe, choose = self.tracker.observe, self.planner.choose
+
+        def slow_observe(imgs, *x, **y):
+            out = observe(imgs, *x, **y)
+            if imgs:
+                time.sleep(tracker_delay)
+            return out
+
+        def slow_choose(*x, **y):
+            out = choose(*x, **y)
+            time.sleep(planner_delay)
+            return out
+        self.tracker.observe, self.planner.choose = slow_observe, slow_choose
+
+
 class SimCell:
     def __init__(self, rec, cfg, kin_xml, left, right, seed):
         self.cfg, self.left, self.right = cfg, left, right
@@ -58,27 +83,27 @@ class SimCell:
         return p+R @ self.offset
 
     def start(self):
-        self.T = time.monotonic()
+        self.T = time.perf_counter()
         self.threads = [threading.Thread(target=f, daemon=True) for f in (self._physics, self._render)]
         for th in self.threads:
             th.start()
 
     def _physics(self):
-        c, nxt = self.cfg, time.monotonic()
+        c, nxt = self.cfg, time.perf_counter()
         while not self.stopped:
             nxt += c.dt
-            w = nxt-time.monotonic()
+            w = nxt-time.perf_counter()
             if w > 0:
                 time.sleep(w)
             else:
                 self.lag.append(-w)
-                nxt = time.monotonic()
+                nxt = time.perf_counter()
             target, ball = self._left(), self._ball()
             self.rope.advance(target-self.rope.left())
             curve = self.rope.curve()
             self.min_surface = min(self.min_surface, surface_distance(curve, ball, c.sphere_radius, c.material['radius_m']))
             with self.lock:
-                self.snap = (time.monotonic(), self.rope.data.qpos.copy(), self.rope.data.mocap_pos.copy(), ball, curve)
+                self.snap = (time.perf_counter(), self.rope.data.qpos.copy(), self.rope.data.mocap_pos.copy(), ball, curve)
 
     def _render(self):
         period, latency = 1/30., self.cfg.image_latency_s
@@ -89,10 +114,10 @@ class SimCell:
             self.view.close()
 
     def _render_loop(self, period, latency):
-        nxt = time.monotonic()
+        nxt = time.perf_counter()
         while not self.stopped:
             nxt += period
-            w = nxt-time.monotonic()
+            w = nxt-time.perf_counter()
             time.sleep(max(w, 0.))
             with self.lock:
                 snap = self.snap
@@ -102,7 +127,7 @@ class SimCell:
             rope = SimpleNamespace(data=SimpleNamespace(qpos=qpos, mocap_pos=mocap), left=lambda m=mocap: m[0].copy())
             self.view.sync(rope, ball)
             imgs = self.view.images()
-            now = time.monotonic()
+            now = time.perf_counter()
             with self.lock:
                 self.pending += [(tc+latency, r, im, tc) for r, im in imgs.items()]
                 due = [p for p in self.pending if p[0] <= now]
@@ -111,7 +136,7 @@ class SimCell:
                     self.frames[r] = (im, t)
 
     def latest(self):
-        now = time.monotonic()
+        now = time.perf_counter()
         with self.lock:
             due = [p for p in self.pending if p[0] <= now]
             self.pending = [p for p in self.pending if p[0] > now]
@@ -138,15 +163,25 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('--scenes', default='test_hold_0116')
     ap.add_argument('--sync-controller', action='store_true')
+    ap.add_argument('--torch-threads', type=M.positive_threads, default=1)
+    ap.add_argument('--time-scale', type=float, default=M.TIME_SCALE)
+    ap.add_argument('--tracker-delay-s', type=float, default=0.)
+    ap.add_argument('--planner-delay-s', type=float, default=0.)
+    ap.add_argument('--no-video', action='store_true')
     ap.add_argument('--out', default='outputs/real_runs/sil')
     a = ap.parse_args()
+    if a.sync_controller and (a.time_scale != 1. or a.tracker_delay_s or a.planner_delay_s):
+        ap.error('--sync-controller supports only --time-scale 1 and no added delays')
     cfg = replace(Config(out=str(ROOT/M.SCENE_DIR)), plan_commit=M.COMMIT)
     recs = {r['id']: r for r in json.loads((cfg.path/'tasks/test/scenes.json').read_text())['scenes']}
     kin = Kin(cfg.path/'scene.xml')
     args = SimpleNamespace(ik_dt=.04, no_capsule=False, min_gap_m=0., max_joint_speed=1.5, branch_tol=.35, lookahead=.1,
                            gain=300., max_follow_m=.03, max_follow_rad=.05, follow_window=.2, abort_gap_m=0.,
-                           max_start_s=5., max_stale_s=3., abort_surface_m=.002, snap_m=.001)
-    cls = Controller if a.sync_controller else AsyncController
+                           max_start_s=5., max_stale_s=3., abort_surface_m=.002, snap_m=.001, time_scale=a.time_scale,
+                           video=not a.no_video)
+    extra = {} if a.sync_controller else dict(time_scale=a.time_scale, tracker_delay=a.tracker_delay_s,
+                                              planner_delay=a.planner_delay_s)
+    cls = Controller if a.sync_controller else SlowController
     out = Path(a.out)/time.strftime('%Y%m%d_%H%M%S')
     summary = {}
     for sid in a.scenes.split(','):
@@ -158,7 +193,8 @@ def main():
         cell = SimCell(rec, cfg, cfg.path/'scene.xml', left, right, int(rec['seed']) % (1 << 30))
         cell.start()
         print(f'--- {sid} ({cls.__name__})', flush=True)
-        factory = lambda r: cls(str(ROOT/M.CKPT), r['goal_curve'], r['target_left'], commit=M.COMMIT)  # noqa: E731
+        factory = lambda r: cls(str(ROOT/M.CKPT), r['goal_curve'], r['target_left'],
+                                threads=a.torch_threads, commit=M.COMMIT, **extra)  # noqa: E731
         try:
             term = run_scene(rec, cfg, plan, left, right, cell, kin, args, factory, out)
         finally:

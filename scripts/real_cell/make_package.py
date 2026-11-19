@@ -132,6 +132,8 @@ def main():
     for p in sorted((ROOT/'scripts/real_cell').glob('*')):
         if p.is_file() and p.suffix in ('.py', '.md'):
             copy(p, dest/p.relative_to(ROOT))
+    for p in sorted((ROOT/'docs/deployment').glob('*.md')):        # field notes from the cell PC
+        copy(p, dest/p.relative_to(ROOT))
     for d in DATA:
         copy(ROOT/d, dest/d)
     n_assets = copy_scene_xml(dest)

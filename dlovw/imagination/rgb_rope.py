@@ -111,13 +111,14 @@ def chain(x, grip, seg, iters=60):
     idx = [np.arange(p, n - 1, 2) for p in (0, 1)]
     wa = [np.where(i == 0, 0.0, np.where(i + 1 == n - 1, 1.0, 0.5))[:, None] for i in idx]
     wb = [np.where(i + 1 == n - 1, 0.0, np.where(i == 0, 1.0, 0.5))[:, None] for i in idx]
+    pairs = [(x[p:-1:2], x[p+1::2], wa[p], wb[p]) for p in (0, 1)]
     for _ in range(iters):
-        for i, a, b in zip(idx, wa, wb):
-            d = x[i + 1] - x[i]
+        for left, right, a, b in pairs:
+            d = right - left
             ln = np.linalg.norm(d, axis=1, keepdims=True)
             corr = (ln - seg) * d / np.maximum(ln, 1e-9)
-            x[i] += a * corr
-            x[i + 1] -= b * corr
+            left += a * corr
+            right -= b * corr
     return x
 
 
@@ -298,8 +299,10 @@ class RopeRGB:
                 free = inside & ~o["occ"][vc, uc]
                 res, wt = np.zeros((N, 2)), np.zeros(N)
                 if len(o["pix"]):                                   # E-step: rope pixels -> projected nodes
-                    pu = (o["pix"][:, None] - u[None].astype(np.float32))
-                    d2 = (pu * pu).sum(-1)
+                    ux, uy = u.astype(np.float32).T
+                    dx = o["pix"][:, 0, None] - ux
+                    dy = o["pix"][:, 1, None] - uy
+                    d2 = dx*dx + dy*dy
                     d2[:, ~inside] = np.inf
                     near = d2.min(1) < (3 * sig) ** 2
                     w = np.exp(-(d2[near] - d2[near].min(1, keepdims=True)) / (2 * sig ** 2))

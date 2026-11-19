@@ -64,7 +64,7 @@ class QualityGate:
         self.length = length
         self.mode = mode
 
-    def update(self, t, quality):
+    def update(self, t, quality, *, diagnostics=None):
         any_support = np.asarray(quality['image_support'], bool).any(1)
         if 'image_support_capture_s' in quality:
             times = np.asarray(quality['image_support_capture_s'])
@@ -94,6 +94,13 @@ class QualityGate:
         unsupported = ~bounded[2:-2]
         quality['anchored_gap_radius_m'] = radius
         global_loss = bool((age > .3).mean() > .8)
+        if diagnostics is not None:
+            diagnostics.update(gate_mode=self.mode, global_loss=global_loss,
+                               local_loss=bool(((age > .3) & unsupported).mean() > .2),
+                               long_loss=bool(((age > 1.) & unsupported).any()),
+                               support_nodes=quality['image_support'].sum(axis=0).tolist(),
+                               support_frame_s=[float(s) if np.isfinite(s) else None
+                                                for s in quality.get('image_support_capture_s', ())])
         if self.mode == 'bound':
             return global_loss
         return bool(global_loss or ((age > .3) & unsupported).mean() > .2 or ((age > 1.) & unsupported).any())

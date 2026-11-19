@@ -95,13 +95,46 @@ def check_blas():
 
 
 def check_load():
+    if os.name == 'nt':
+        try:
+            percent = windows_cpu_percent()
+        except OSError as e:
+            return [_r('load', 'WARN', f'无法读取 Windows CPU 使用率 ({e})')]
+        level = 'WARN' if percent > 50 else 'PASS'
+        msg = f'CPU 使用率 {percent:.0f}%（1 秒采样）'
+        if level == 'WARN':
+            msg += '；关闭其他任务，否则规划延迟变大'
+        return [_r('load', level, msg)]
     la, n = os.getloadavg()[0], os.cpu_count() or 1
     if la/n > .5:
         return [_r('load', 'WARN', f'CPU 负载 {la:.1f}/{n} 核；关闭其他任务，否则规划延迟变大')]
     return [_r('load', 'PASS', f'CPU 负载 {la:.1f}/{n} 核')]
 
 
-def check_selftest(cfg, recs, checkpoint, commit, decisions=30):
+def windows_cpu_percent():
+    import ctypes
+    from ctypes import wintypes
+
+    get_times = ctypes.WinDLL('kernel32', use_last_error=True).GetSystemTimes
+    get_times.argtypes = [ctypes.POINTER(wintypes.FILETIME)] * 3
+    get_times.restype = wintypes.BOOL
+
+    def sample():
+        times = [wintypes.FILETIME() for _ in range(3)]
+        if not get_times(*(ctypes.byref(t) for t in times)):
+            raise ctypes.WinError(ctypes.get_last_error())
+        return [(t.dwHighDateTime << 32) | t.dwLowDateTime for t in times]
+
+    before = sample()
+    time.sleep(1.)
+    idle, kernel, user = (end-start for start, end in zip(before, sample()))
+    total = kernel+user  # GetSystemTimes includes idle time in kernel time.
+    if total <= 0:
+        raise OSError('CPU 采样未更新')
+    return 100.*(total-idle)/total
+
+
+def check_selftest(cfg, recs, checkpoint, commit, decisions=30, *, threads=1):
     """Decision latency of the deployed Controller on stored frames (no robot, no camera)."""
     from dlovw.cell.calibrated.config import right_rotation, tcp_from_sphere
     from dlovw.cell.calibrated.deployment import Controller
@@ -111,12 +144,12 @@ def check_selftest(cfg, recs, checkpoint, commit, decisions=30):
     d = np.load(f, allow_pickle=False)
     rec = recs[str(d['scene'])]
     images = {'front': d['front'], 'top': d['top']}
-    ctl = Controller(str(checkpoint), rec['goal_curve'], rec['target_left'], commit=commit)
+    ctl = Controller(str(checkpoint), rec['goal_curve'], rec['target_left'], threads=threads, commit=commit)
     R = right_rotation(cfg)
     tcp = tcp_from_sphere(np.asarray(rec['motion']['center'], float), R, cfg)
     start, dec, t, frame_t = np.asarray(rec['start_left'], float), [], 0., 0.
-    t_wall = time.monotonic()
-    while len(dec) < decisions and time.monotonic()-t_wall < 60:
+    t_wall = time.perf_counter()
+    while len(dec) < decisions and time.perf_counter()-t_wall < 60:
         if int(round(t/cfg.dt)) % 4 == 0:
             frame_t = t
         r = ctl.step(t, start, tcp, R, images, {k: frame_t for k in images}, right_timestamp=t)
@@ -127,7 +160,8 @@ def check_selftest(cfg, recs, checkpoint, commit, decisions=30):
         return [_r('selftest', 'FAIL', f'60 s 内只完成 {len(dec)} 次决策（状态 {r.get("status")}）')]
     p50, p95 = np.percentile(dec, 50), np.percentile(dec, 95)
     level = 'FAIL' if p95 > LAT_FAIL_MS else 'WARN' if p95 > LAT_WARN_MS else 'PASS'
-    return [_r('selftest', level, f'决策延迟 p50 {p50:.0f} ms、p95 {p95:.0f} ms（FAIL > {LAT_FAIL_MS:.0f} ms）')]
+    return [_r('selftest', level, f'决策延迟 p50 {p50:.1f} ms、p95 {p95:.1f} ms'
+               f'（FAIL > {LAT_FAIL_MS:.0f} ms，Torch {threads} 线程）')]
 
 
 def check_robot(arm, name):
@@ -138,26 +172,39 @@ def check_robot(arm, name):
         return [_r(f'robot:{name}', 'FAIL', f'读取状态失败 ({e})')]
     from errors import ROBOT_MODE, SAFETY_MODE
     rm, sm = st['robot_mode'], st['safety_mode']
+    control_ready = st['program_running'] and st['control_connected']
     out.append(_r(f'robot:{name}:mode', 'PASS' if rm == 7 else 'FAIL', f'机器人模式 {ROBOT_MODE.get(rm, rm)}（需要 RUNNING：上电并释放抱闸）'))
     out.append(_r(f'robot:{name}:safety', 'PASS' if sm == 1 else 'FAIL', f'安全模式 {SAFETY_MODE.get(sm, sm)}（需要 NORMAL）'))
     out.append(_r(f'robot:{name}:speed', 'PASS' if st['speed_scaling'] >= .99 else 'FAIL',
                   f'速度滑块 {st["speed_scaling"]*100:.0f}%（需要 100%，否则伺服跟不上）'))
-    out.append(_r(f'robot:{name}:script', 'PASS' if st['program_running'] and st['control_connected'] else 'FAIL',
-                  'ur_rtde 控制脚本' + ('运行中' if st['program_running'] else '未运行（确认远程控制模式，重新运行程序）')))
-    off = arm.tcp_offset()
-    ok = np.abs(off[:3]-np.array(PROBE_TCP[:3])).max() <= .003 and np.abs(off[3:]).max() < 1e-3
-    out.append(_r(f'robot:{name}:tcp', 'PASS' if ok else 'FAIL', f'TCP 偏置 {np.round(off, 4).tolist()}（需要 {PROBE_TCP}）'))
+    out.append(_r(f'robot:{name}:script', 'PASS' if control_ready else 'FAIL',
+                  'ur_rtde 控制脚本运行中' if control_ready else 'ur_rtde 控制未就绪（确认 RUNNING 和远程控制模式后重试）'))
+    out.append(check_robot_tcp(arm, name, rm == 7 and sm == 1 and control_ready))
     out.append(_r(f'robot:{name}:payload', 'WARN' if st['payload_kg'] <= 0 else 'PASS',
                   f'负载 {st["payload_kg"]} kg（确认与实际工具一致；0 表示可能未设置）'))
     return out
+
+
+def check_robot_tcp(arm, name, ready):
+    key = f'robot:{name}:tcp'
+    if not ready:
+        return _r(key, 'FAIL', '未核对 TCP 偏置，等待机械臂和 RTDE 控制就绪')
+    try:
+        off = arm.tcp_offset()
+    except Exception as e:                           # noqa: BLE001
+        return _r(key, 'FAIL', f'读取 TCP 偏置失败 ({e})')
+    if off.shape != (6,) or not np.isfinite(off).all():
+        return _r(key, 'FAIL', '控制器返回了无效的 TCP 偏置')
+    ok = np.abs(off[:3]-np.array(PROBE_TCP[:3])).max() <= .003 and np.abs(off[3:]).max() < 1e-3
+    return _r(key, 'PASS' if ok else 'FAIL', f'TCP 偏置 {np.round(off, 4).tolist()}（需要 {PROBE_TCP}）')
 
 
 def check_cameras(cams, seconds=2.):
     if cams is None:
         return []
     out, stamps = [], {}
-    t_end = time.monotonic()+seconds
-    while time.monotonic() < t_end:
+    t_end = time.perf_counter()+seconds
+    while time.perf_counter() < t_end:
         for r, (_, ft) in cams.latest().items():
             stamps.setdefault(r, set()).add(ft)
         time.sleep(.005)
@@ -184,7 +231,7 @@ def run(cfg, recs, args, out_dir, left=None, right=None, cams=None, selftest=Tru
     res = check_package()+check_software()+check_blas()+check_load()
     if selftest:
         try:
-            res += check_selftest(cfg, recs, ROOT/args.checkpoint, args.commit)
+            res += check_selftest(cfg, recs, ROOT/args.checkpoint, args.commit, threads=args.torch_threads)
         except Exception as e:                       # noqa: BLE001
             res.append(_r('selftest', 'FAIL', f'Controller 自检异常 ({e!r})'))
     for name, arm in (('left', left), ('right', right)):
@@ -197,7 +244,7 @@ def run(cfg, recs, args, out_dir, left=None, right=None, cams=None, selftest=Tru
     fails = [r for r in res if r['level'] == 'FAIL']
     print(f"    => {'通过' if not fails else f'{len(fails)} 项未通过'}", flush=True)
     out_dir.mkdir(parents=True, exist_ok=True)
-    (out_dir/'preflight.json').write_text(json.dumps(res, indent=1, ensure_ascii=False))
+    (out_dir/'preflight.json').write_text(json.dumps(res, indent=1, ensure_ascii=False), encoding='utf-8')
     return not fails, res
 
 
@@ -209,7 +256,10 @@ def touch_check(left, right, points=3, tol_m=.005):
     for k in range(points):
         input(f'  第 {k+1}/{points} 个点：两尖端接触后按回车 ')
         pl = left.tcp()[:3]
-        pr = T_RIGHT[:3, :3] @ right.tcp()[:3]+T_RIGHT[:3, 3]
+        pr = right.tcp()[:3]
+        if any(p.shape != (3,) or not np.isfinite(p).all() for p in (pl, pr)):
+            raise ValueError('收到无效的 TCP 坐标，无法核对标定')
+        pr = T_RIGHT[:3, :3] @ pr+T_RIGHT[:3, 3]
         e = float(np.linalg.norm(pl-pr))
         errs.append(e)
         print(f'    左 {np.round(pl, 4).tolist()}  右(世界系) {np.round(pr, 4).tolist()}  差 {e*1e3:.1f} mm')

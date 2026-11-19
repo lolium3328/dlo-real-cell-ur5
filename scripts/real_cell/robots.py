@@ -68,18 +68,36 @@ class Kin:
         return self.arms[side].fk(np.asarray(q, float))
 
 
-class UR:
-    """ur_rtde wrapper."""
+class URReceive:
+    """Read robot state without loading a script onto the controller."""
     def __init__(self, ip, side):
-        import rtde_control, rtde_receive
-        self.side, self.ip, self.n_fault_checks = side, ip, 0
+        import rtde_receive
+        self.side, self.ip = side, ip
         try:
             self.r = rtde_receive.RTDEReceiveInterface(ip)
         except Exception as e:                       # noqa: BLE001
             raise ConnectionError(f'{side} arm {ip}: RTDE receive connection failed ({e})') from e
+
+    def tcp(self):
+        return np.asarray(self.r.getActualTCPPose(), float)
+
+    def close(self):
+        try:
+            self.r.disconnect()
+        except Exception:                            # noqa: BLE001
+            pass
+
+
+class UR(URReceive):
+    """ur_rtde control and receive interfaces."""
+    def __init__(self, ip, side):
+        import rtde_control
+        super().__init__(ip, side)
+        self.n_fault_checks = 0
         try:
             self.c = rtde_control.RTDEControlInterface(ip)
         except Exception as e:                       # noqa: BLE001
+            super().close()
             raise ConnectionError(f'{side} arm {ip}: RTDE control connection failed ({e}); stop any program on the '
                                   'pendant, close pop-ups, and disconnect other RTDE / External Control clients (CB3 has no '
                                   'Remote Control switch; on e-Series enable Remote Control)') from e
@@ -94,9 +112,6 @@ class UR:
 
     def q(self):
         return np.asarray(self.r.getActualQ(), float)
-
-    def tcp(self):
-        return np.asarray(self.r.getActualTCPPose(), float)
 
     def tcp_offset(self):
         return np.asarray(self.c.getTCPOffset(), float)
@@ -152,11 +167,11 @@ class UR:
             print('stop error:', e)
 
     def close(self):
-        for x in (self.c, self.r):
-            try:
-                x.disconnect()
-            except Exception:                        # noqa: BLE001
-                pass
+        try:
+            self.c.disconnect()
+        except Exception:                            # noqa: BLE001
+            pass
+        super().close()
 
 
 class MockUR:
@@ -229,6 +244,7 @@ class RealSense:
         import pyrealsense2 as rs
         self.latency, self.lock, self.frames, self.stopped = latency_s, threading.Lock(), {}, False
         self.pipes = {}
+        self.timing_trace = None
         for role, cam in layout.CAMERAS.items():
             cfg = rs.config()
             cfg.enable_device(cam['serial'])
@@ -240,13 +256,37 @@ class RealSense:
             threading.Thread(target=self._loop, args=(r, p), daemon=True).start()
 
     def _loop(self, role, pipe):
+        last_error = -float('inf')
         while not self.stopped:
+            wait_started = time.perf_counter()
             try:
                 f = pipe.wait_for_frames(1000).get_color_frame()
+                arrived = time.perf_counter()
                 with self.lock:
-                    self.frames[role] = (np.asanyarray(f.get_data()).copy(), time.monotonic()-self.latency)
-            except Exception:                        # noqa: BLE001 - timeouts: keep the old frame, tracker ages it out
+                    rgb = np.asanyarray(f.get_data()).copy()
+                    ready = time.perf_counter()
+                    stamp = ready-self.latency
+                    self.frames[role] = (rgb, stamp)
+            except Exception as exc:                 # timeouts: keep the old frame, tracker ages it out
+                trace = self.timing_trace
+                now = time.perf_counter()
+                if trace is not None and now-last_error >= .5:
+                    trace.record('camera_error', now-trace.origin, role=role, error=repr(exc),
+                                 wait_started_s=wait_started-trace.origin)
+                    last_error = now
                 continue
+            trace = self.timing_trace
+            if trace is not None:
+                try:
+                    number = f.get_frame_number()
+                    device_ms = f.get_timestamp()
+                    domain = str(f.get_frame_timestamp_domain())
+                    device_ms = device_ms if np.isfinite(device_ms) else None
+                except Exception:
+                    number = device_ms = domain = None
+                trace.record('camera_frame', ready-trace.origin, role=role, frame_number=number,
+                             wait_started_s=wait_started-trace.origin, host_arrival_s=arrived-trace.origin,
+                             frame_s=stamp-trace.origin, device_timestamp_ms=device_ms, device_time_domain=domain)
 
     def latest(self):
         with self.lock:

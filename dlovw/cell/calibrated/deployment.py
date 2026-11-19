@@ -58,11 +58,14 @@ class Controller:
         self.latencies = []
         self.decision_latencies = []
         self.last_right_timestamp, self.cached_ball = None, None
+        self.timing_trace = None
+        self.action_trace = {}
 
     def step(self, t, left, right_tcp, right_rotation, rgbs, view_times=None, *, right_frame='left_base',
              right_timestamp=None, left_timestamp=None):
         """One timestamped control sample; xyz poses in metres, rotation a base-from-tool matrix."""
-        started = time.monotonic()
+        started = time.perf_counter()
+        trace = self.timing_trace
         try:
             t, left = float(t), np.asarray(left, float)
         except (ValueError, TypeError, OverflowError):
@@ -89,6 +92,8 @@ class Controller:
             return dict(command_xyz=np.zeros(3), status='control_gap')
         velocity = np.zeros(3) if self.previous_left is None else (left-self.previous_left)/dt
         self.last_t, self.previous_left = t, left.copy()
+        timing = {}
+        gate_detail = None
         try:
             if not isinstance(rgbs, dict):
                 raise ValueError('Images must be keyed by front/top')
@@ -104,31 +109,61 @@ class Controller:
                 self.cached_ball = self.ball.push(rt, right_tcp, right_rotation, frame=right_frame)
                 self.last_right_timestamp = rt
             ball = None if self.cached_ball is None else (self.cached_ball[0], self.cached_ball[1], t-rt)
+            if trace is not None:
+                input_frames = {r: (view_times or {}).get(r, t) for r in rgbs}
+                timing['tracker_id'] = trace.record('tracker_start', tracker_sample_s=t, grip_sample_s=t,
+                                                    input_frame_s=input_frames, view_s=input_frames)
+                timing['tracker_sample_s'] = t
+                gate_detail = {}
+                tracker_cpu_start = time.thread_time()
             quality = self.tracker.observe(rgbs, np.r_[left, self.fixed], t, view_t=view_times,
                                            grip_vel=np.r_[velocity, 0, 0, 0])
+            observed_s = trace.now() if trace is not None else None
             quality = self.evidence.update(t, quality, {r:(view_times or {}).get(r, t) for r in rgbs})
-        except (ValueError, RuntimeError, TypeError):
+        except (ValueError, RuntimeError, TypeError) as exc:
             self.action[:] = 0.
-            return dict(command_xyz=np.zeros(3), status='observation_fault')
+            return dict(command_xyz=np.zeros(3), status='observation_fault', fault=repr(exc), timing=timing)
         self.first_t = t if self.first_t is None else self.first_t
-        pause = self.gate.update(t, quality)
+        pause = self.gate.update(t, quality, diagnostics=gate_detail)
+        if trace is not None:
+            ready_s = trace.now()
+            trace.record('tracker_publish', ready_s, tracker_id=timing['tracker_id'], tracker_sample_s=t,
+                         observed_s=observed_s, computed_s=ready_s, thread_cpu_s=time.thread_time()-tracker_cpu_start,
+                         gate_pause=pause, **gate_detail)
+            timing.update(tracker_published_s=ready_s, gate_pause=pause, ball_available=ball is not None)
         status = 'tracking'
         if t-self.first_t < .64:
             status = 'warming_up'
         elif pause or ball is None:
             status = 'observation_stale'
+        if trace is not None and status == 'observation_stale':
+            timing['stale_reasons'] = [reason for reason, triggered in
+                                       (('quality_gate', pause), ('ball_missing', ball is None)) if triggered]
         decision = False
         with torch.no_grad():
             if status == 'tracking' and t-self.last_decision_t >= self.config.decision_dt-1e-6:
                 decision = True
+                if trace is not None:
+                    plan_id = trace.record('planner_start', tracker_id=timing['tracker_id'], tracker_sample_s=t,
+                                           tracker_published_s=timing['tracker_published_s'], grip_sample_s=t,
+                                           right_sample_s=rt, control_status=status)
+                    planner_cpu_start = time.thread_time()
                 prev = np.zeros(6) if self.decision_left is None else np.r_[(left-self.decision_left)/(self.config.cap*self.config.decision_steps), 0, 0, 0]
                 obs = encode(quality['centerline'], left, self.fixed, ball, quality['quality_features'], self.origin)
                 ap = torch.tensor(prev, dtype=torch.float32)[None]
                 self.state = self.wm.obs_step(self.state, ap, torch.tensor(obs)[None])[0]
                 self.belief = self.fc.step(self.belief, torch.tensor(obs[MEAS_SLICE])[None], None)
+                model_ready_s = trace.now() if trace is not None else None
                 _, self.action, _ = self.planner.choose(self.state, [self.belief], self.goal,
                                                        np.r_[left, self.fixed], np.r_[self.target, self.fixed], self.origin, ap)
                 self.decision_left, self.last_decision_t = left.copy(), t
+                if trace is not None:
+                    ready_s = trace.now()
+                    trace.record('planner_publish', ready_s, plan_id=plan_id, tracker_id=timing['tracker_id'],
+                                 model_ready_s=model_ready_s, computed_s=ready_s,
+                                 thread_cpu_s=time.thread_time()-planner_cpu_start)
+                    self.action_trace = dict(plan_id=plan_id, plan_published_s=ready_s)
+        timing.update(self.action_trace)
         raw = self.lim.project(self.action, np.r_[left,self.fixed])[:3]*self.config.cap if status == 'tracking' else np.zeros(3)
         if status == 'tracking' and ball is not None:
             from ..cbf import cbf_filter
@@ -139,11 +174,12 @@ class Controller:
         try:
             command = execute_action(raw, left, self.fixed, self.previous_u, self.config)
         except RuntimeError:
-            return dict(command_xyz=np.zeros(3), status='constraint_infeasible', stop_required=True)
+            return dict(command_xyz=np.zeros(3), status='constraint_infeasible', stop_required=True, timing=timing)
         self.previous_u = command
-        elapsed = (time.monotonic()-started)*1000
+        elapsed = (time.perf_counter()-started)*1000
         self.latencies.append(elapsed)
         if decision:
             self.decision_latencies.append(elapsed)
         return dict(command_xyz=command, status=status, elapsed_ms=elapsed,
-                    decision=decision, sphere_position=None if ball is None else ball[0], quality=quality)
+                    decision=decision, sphere_position=None if ball is None else ball[0], quality=quality,
+                    timing=timing)

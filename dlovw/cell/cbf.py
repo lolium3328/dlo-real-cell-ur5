@@ -28,23 +28,29 @@ def hildreth(u_nom, A, b, iters=200, tol=1e-9):
     """min |u - u_nom|^2 s.t. A u >= b (rows of A, entries of b)."""
     if len(A) == 0:
         return u_nom.copy(), 0
-    lam = np.zeros(len(A))
-    G = (A * A).sum(1)
-    u = u_nom.copy()
+    # The control problem has three coordinates. Keep them as scalars to
+    # avoid making NumPy row views and temporaries in each sweep.
+    rows = list(zip(A.tolist(), b.tolist(), (A * A).sum(1).tolist()))
+    lam = [0.0] * len(rows)
+    x, y, z = u_nom.tolist()
+    sweeps = iters
     for it in range(iters):
         change = 0.0
-        for k in range(len(A)):
-            if G[k] < 1e-12:
+        for k, ((a0, a1, a2), rhs, norm2) in enumerate(rows):
+            if norm2 < 1e-12:
                 continue
-            new = max(0.0, lam[k] + (b[k] - A[k] @ u) / G[k])
+            new = max(0.0, lam[k] + (rhs - (a0*x + a1*y + a2*z)) / norm2)
             d = new - lam[k]
             if d:
-                u += d * A[k]
+                x += d*a0
+                y += d*a1
+                z += d*a2
                 lam[k] = new
                 change = max(change, abs(d))
         if change < tol:
-            return u, it + 1
-    return u, iters
+            sweeps = it + 1
+            break
+    return np.array([x, y, z]), sweeps
 
 
 def cbf_filter(u_nom, rope, left, fixed, obstacles, radius, dt, ws_low, ws_high, stretch_max, cap, gamma=GAMMA, norm='l1'):
