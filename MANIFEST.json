@@ -164,8 +164,8 @@
   "scripts/real_cell/sil_check.py": "dbd395835f5d05b18a2e10cd00ab1c70945d0eb8ef6ede9e59932e109f00a5d2",
   "scripts/real_cell/timing_trace.py": "ab2308ab9d87ca2926864ed1e4b4a21b5761e95f4dea55e96c72a6b3fb691fe7",
   "scripts/real_cell/video.py": "264007c9aafef3ab0f398497cd090face9918cb92aa2c6fbf80f423362647846",
-  "scripts/real_cell/部署说明.md": "07d0d9da21fe6a65998646f2f2810a7c8c7f70097471090222efb597d3bfcbfe",
+  "scripts/real_cell/部署说明.md": "91b7cec39d3d129f50a872adc04f6b5dfca7e33e6819aad5e3529de39f2f8ff0",
   "selftest/frames.npz": "c197973f418fcb347aee8c852f6d7de3cd9283863d54cd26962620a8fb3daadd",
-  "部署说明.md": "07d0d9da21fe6a65998646f2f2810a7c8c7f70097471090222efb597d3bfcbfe"
+  "部署说明.md": "91b7cec39d3d129f50a872adc04f6b5dfca7e33e6819aad5e3529de39f2f8ff0"
  }
 }
