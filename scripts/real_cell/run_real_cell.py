@@ -127,7 +127,7 @@ def parse_args():
     ap.add_argument('--skip-preflight', action='store_true', help='do not block motion on preflight failures (not recommended)')
     ap.add_argument('--check-only', action='store_true', help='read-only: IK, limits, clearances; no motion')
     ap.add_argument('--no-capsule', action='store_true', help='skip the two-arm capsule clearance checks (plan and run)')
-    ap.add_argument('--ignore-check', action='store_true', help='run even when the feasibility check fails')
+    ap.add_argument('--ignore-check', action='store_true', help='run even when the feasibility check (E601) fails; the post-homing check (E602) still stops the scene')
     ap.add_argument('--dry-run', action='store_true', help='mock robots, no cameras, stub policy')
     ap.add_argument('--torch-threads', type=positive_threads, default=1,
                     help='Torch CPU threads for both the recorded-frame self-test and the live planner')
@@ -270,8 +270,7 @@ def run_one(rec, cfg, kin, left, right, cams, a, factory, out_dir, summary):
     bad = verify_home(left, right, plan, rec, a)
     if bad:
         E.report(out_dir, sid, 'homing_check_failed', code='E602', detail={'问题': bad}, left=left, right=right)
-        if not a.ignore_check:
-            return None
+        return None if ask('  继续下一个场景？y/n: ') == 'y' else 'quit'     # never bypassed (--ignore-check is plan-only)
     c = ask('  [2/2] 绳子静止、归位确认后输入 y 开始规划并运动（s 跳过，q 退出）: ')
     if c != 'y':
         return 'quit' if c == 'q' else None

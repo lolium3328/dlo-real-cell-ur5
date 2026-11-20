@@ -150,7 +150,7 @@
   "outputs/visibility_reference_20261113/recommended_workspace.json": "f3176c556d8acc9cab1cd1db27a4468f4175308da0eca63e7f2085e1ccce3cca",
   "requirements.txt": "48bd7fafadcad7067b023663cfe9e771588b701a2687a28e47a472948fde16f9",
   "scripts/real_cell/async_controller.py": "3f8b647ffcc4bc33fd53549aa0b19a36a24d4213710e062213191853bb7d6102",
-  "scripts/real_cell/errors.py": "aada519236f1294b9cdfcc0a52ed2a1c027d83d73eb8d44333b7b05e70d2ce8a",
+  "scripts/real_cell/errors.py": "34e2601f10a41594c494a53036be771817b74cb6b91d81438f267281efad98db",
   "scripts/real_cell/export_sim_trajectory.py": "760817ee02ea655d331d2d525038b25002d425ff86b7ca9e79f4b2d7f4a0c452",
   "scripts/real_cell/geometry.py": "a07181cb789c4c4457657e7d247b2a6a6184960c2793d87b93a769f4a80a0bad",
   "scripts/real_cell/latency_sim.py": "3af041760b74b4aa0899403296fa9d20ad2a70772501eab1d8cd26084c5119ad",
@@ -159,13 +159,13 @@
   "scripts/real_cell/preflight.py": "cc483c77a28fbcec3dba2d17a35d3df9022ba4d743d290c70d198b545dce46a2",
   "scripts/real_cell/replay_check.py": "98b1b6503e93fd7a7479f14f9c24d062efb48dda795f1b96d56565a65d331c81",
   "scripts/real_cell/robots.py": "2378323cac58266173d5dd3b9e4217800769203a19dd2a2cf99739d89ba6af49",
-  "scripts/real_cell/run_real_cell.py": "d5ae70d201d7a4218bdccb8ff4ab4af5a389ff181bb18d02e969e869c23ec899",
+  "scripts/real_cell/run_real_cell.py": "ad8b97fbb67ecf3819fb628f539f237a4e04589b36e295444a7d1eb6c24d7ce0",
   "scripts/real_cell/runner.py": "c05cbbe5e1dafd17c79c1669a96938c2c1d311308c1a3a2d3dfdc20d4cc38329",
   "scripts/real_cell/sil_check.py": "dbd395835f5d05b18a2e10cd00ab1c70945d0eb8ef6ede9e59932e109f00a5d2",
   "scripts/real_cell/timing_trace.py": "ab2308ab9d87ca2926864ed1e4b4a21b5761e95f4dea55e96c72a6b3fb691fe7",
   "scripts/real_cell/video.py": "264007c9aafef3ab0f398497cd090face9918cb92aa2c6fbf80f423362647846",
-  "scripts/real_cell/部署说明.md": "91b7cec39d3d129f50a872adc04f6b5dfca7e33e6819aad5e3529de39f2f8ff0",
+  "scripts/real_cell/部署说明.md": "7c61495c3c03a08cdc83e4bc121b471b0cdfd242c35c732595be810563acc858",
   "selftest/frames.npz": "c197973f418fcb347aee8c852f6d7de3cd9283863d54cd26962620a8fb3daadd",
-  "部署说明.md": "91b7cec39d3d129f50a872adc04f6b5dfca7e33e6819aad5e3529de39f2f8ff0"
+  "部署说明.md": "7c61495c3c03a08cdc83e4bc121b471b0cdfd242c35c732595be810563acc858"
  }
 }
